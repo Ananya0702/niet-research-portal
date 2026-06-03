@@ -26,7 +26,7 @@ A full-stack **Faculty Research Analytics System** built for NIET institution to
 
 ---
 ## 📁 Project Structure
-
+```text
 niet-portal/
 │
 ├── backend/
@@ -50,6 +50,7 @@ niet-portal/
 │ └── seed_data.sql
 │
 └── README.md
+```
 
 ---
 ## ⚙️ Setup Instructions
