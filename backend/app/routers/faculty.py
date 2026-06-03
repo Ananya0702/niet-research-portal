@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Faculty, Publication, CitationYearly, FacultyResearchArea, Achievement, Project, Patent
-from app.routers.auth import get_current_faculty
+from app.dependencies import get_current_faculty
 
 router = APIRouter()
 
