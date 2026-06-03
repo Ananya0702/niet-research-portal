@@ -27,6 +27,7 @@ A full-stack **Faculty Research Analytics System** built for NIET institution to
 ---
 
 ## 📁 Project Structure
+
 niet-portal/
 │
 ├── backend/
@@ -58,6 +59,7 @@ niet-portal/
 ### 1. Clone the Repository
 
 git clone https://github.com/Ananya0702/niet-research-portal.git
+
 cd niet-research-portal/backend
 
 
