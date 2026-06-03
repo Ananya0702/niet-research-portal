@@ -25,7 +25,6 @@ A full-stack **Faculty Research Analytics System** built for NIET institution to
 - API Testing: Swagger UI (/docs)
 
 ---
-
 ## 📁 Project Structure
 
 niet-portal/
@@ -51,7 +50,6 @@ niet-portal/
 │ └── seed_data.sql
 │
 └── README.md
-
 
 ---
 ## ⚙️ Setup Instructions
