@@ -67,3 +67,8 @@ def get_me(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Faculty not found")
 
     return faculty
+def get_current_faculty(token: str = Depends(oauth2_scheme)):
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return payload

@@ -4,6 +4,16 @@ sqlalchemy
 pymysql
 python-jose
 passlib
-bcrypt
+bcrypt==4.1.3
 python-dotenv
 pydantic
+scholarly
+beautifulsoup4
+requests
+pandas
+scikit-learn
+rapidfuzz
+transformers
+torch
+torchvision
+torchaudio

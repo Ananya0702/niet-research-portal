@@ -1,0 +1,40 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f7f7f8;
+  color: #1a1a1a;
+}
+
+:root {
+  --purple:       #534AB7;
+  --purple-light: #EEEDFE;
+  --blue:         #0C447C;
+  --blue-light:   #E6F1FB;
+  --green:        #27500A;
+  --green-light:  #EAF3DE;
+  --amber:        #633806;
+  --amber-light:  #FAEEDA;
+  --sidebar:      #1e1b4b;
+  --border:       #eeeeee;
+  --card:         #ffffff;
+}
+
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; border: none; font-family: inherit; }
+input, select { font-family: inherit; outline: none; }
+
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid #eee;
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 60px auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ddd; border-radius: 10px; }

@@ -1,0 +1,345 @@
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import Layout from "../components/Layout";
+import { getPublications, getPubCounts, addPublication, deletePublication } from "../services/api";
+
+const P = "#534AB7";
+const PL = "rgba(83,74,183,0.08)";
+
+const EMPTY = {
+  title:"", journal_name:"", doi:"", indexing:"SCI", quartile:"Q1",
+  impact_factor:"", year: new Date().getFullYear(), citations_count:0,
+  publication_type:"", abstract:"", conference_name:"",
+  conference_location:"", publisher:"", volume:"", issue:"", pages:"",
+  issn:"", isbn:"", keywords:"", research_area:"", sub_area:"",
+  language:"English", country:"", status:"Published",
+};
+
+const TABS = [
+  { key:"all", label:"All Publications" },
+  { key:"journal", label:"Journal Articles" },
+  { key:"conference", label:"Conference Papers" },
+];
+
+const Q_COLORS = { Q1:"#0C447C", Q2:"#27500A", Q3:"#BA7517", Q4:"#A32D2D" };
+const Q_BG    = { Q1:"#E6F1FB", Q2:"#EAF3DE", Q3:"#FAEEDA", Q4:"#FCEBEB" };
+
+export default function Publications() {
+  const navigate = useNavigate();
+  const [pubs, setPubs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [activeTab, setActiveTab] = useState("all");
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({ quartile:"", indexing:"", year_from:"", year_to:"" });
+  const [counts, setCounts] = useState({ total:0, journal:0, conference:0 });
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState(EMPTY);
+  const [saving, setSaving] = useState(false);
+
+  const fetchPubs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = { page, per_page: perPage, search, pub_type: activeTab==="all" ? "" : activeTab };
+      if (filters.quartile) params.quartile = filters.quartile;
+      if (filters.indexing) params.indexing = filters.indexing;
+      if (filters.year_from) params.year_from = parseInt(filters.year_from);
+      if (filters.year_to) params.year_to = parseInt(filters.year_to);
+      const res = await getPublications(params);
+      setPubs(res.data.publications);
+      setTotal(res.data.total);
+      setTotalPages(res.data.total_pages);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, [page, perPage, activeTab, search, filters]);
+
+  const fetchCounts = useCallback(async () => {
+    try { const r = await getPubCounts(); setCounts(r.data); }
+    catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchPubs(); fetchCounts(); }, [fetchPubs, fetchCounts]);
+
+  const handleSearch = () => { setSearch(searchInput); setPage(1); };
+
+  const handleTabChange = (tab) => { setActiveTab(tab); setPage(1); };
+
+  const clearFilters = () => {
+    setFilters({ quartile:"", indexing:"", year_from:"", year_to:"" });
+    setSearch(""); setSearchInput(""); setPage(1);
+  };
+
+  const hasFilters = filters.quartile || filters.indexing || filters.year_from || filters.year_to || search;
+
+  const handleAdd = async (e) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      await addPublication({
+        ...form,
+        impact_factor: parseFloat(form.impact_factor) || 0,
+        citations_count: parseInt(form.citations_count) || 0,
+        year: parseInt(form.year) || new Date().getFullYear(),
+      });
+      setModal(false); setForm(EMPTY); fetchPubs(); fetchCounts();
+    } catch { alert("Error saving publication"); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Delete this publication?")) {
+      await deletePublication(id); fetchPubs(); fetchCounts();
+    }
+  };
+
+  const pubCounts = [
+    { icon:"📄", label:"Total Publications", value:counts.total, bg:"#EEEDFE", color:P },
+    { icon:"📚", label:"Journal Articles", value:counts.journal, bg:"#E6F1FB", color:"#0C447C" },
+    { icon:"🎤", label:"Conference Papers", value:counts.conference, bg:"#FAEEDA", color:"#633806" },
+  ];
+
+  return (
+    <Layout>
+      {/* Topbar */}
+      <div style={{ background:"#fff", borderBottom:"1px solid #eee", padding:"12px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0, flexWrap:"wrap", gap:8 }}>
+        <div>
+          <div style={{ fontSize:18, fontWeight:600 }}>Publications</div>
+          <div style={{ fontSize:12, color:"#888", marginTop:2 }}>Manage your research publications</div>
+        </div>
+        <button onClick={()=>setModal(true)} style={{ background:P, color:"#fff", padding:"9px 18px", borderRadius:8, fontSize:13, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add Publication</button>
+      </div>
+
+      {/* Counters */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, padding:"12px 16px 0" }}>
+        {pubCounts.map(c => (
+          <div key={c.label} style={{ background:"#fff", borderRadius:12, border:"1px solid #eee", padding:"12px 14px", display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ width:40, height:40, borderRadius:10, background:c.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>{c.icon}</div>
+            <div>
+              <div style={{ fontSize:11, color:"#888" }}>{c.label}</div>
+              <div style={{ fontSize:22, fontWeight:600, lineHeight:1.2 }}>{c.value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:0, padding:"8px 16px 0", background:"#f7f7f8", borderBottom:"1px solid #eee" }}>
+        {TABS.map(t => (
+          <div key={t.key} onClick={()=>handleTabChange(t.key)} style={{ padding:"8px 16px", fontSize:13, fontWeight:500, cursor:"pointer", color:activeTab===t.key ? P : "#888", borderBottom:activeTab===t.key ? `2px solid ${P}` : "2px solid transparent", background:activeTab===t.key ? "#fff" : "transparent", borderRadius:"4px 4px 0 0", transition:"all 0.15s" }}>{t.label}</div>
+        ))}
+      </div>
+
+      {/* Search + Filters */}
+      <div style={{ padding:"10px 16px", background:"#f7f7f8", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+        <div style={{ position:"relative", flex:1, minWidth:200 }}>
+          <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:13, color:"#aaa" }}>🔍</span>
+          <input value={searchInput} onChange={e=>setSearchInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSearch()} placeholder="Search by title, author, DOI, keyword..." style={{ width:"100%", padding:"7px 12px 7px 32px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none", background:"#fff" }} />
+        </div>
+        <button onClick={handleSearch} style={{ padding:"7px 16px", background:P, color:"#fff", borderRadius:8, fontSize:12, border:"none", cursor:"pointer" }}>Search</button>
+        <button onClick={()=>setShowFilters(!showFilters)} style={{ padding:"7px 16px", background:showFilters?PL:"#fff", color:showFilters?P:"#555", borderRadius:8, fontSize:12, border:"1px solid #ddd", cursor:"pointer" }}>⚙ Filters {hasFilters ? `(${Object.values(filters).filter(Boolean).length+(search?1:0)})` : ""}</button>
+        {hasFilters && <button onClick={clearFilters} style={{ padding:"7px 12px", background:"#FCEBEB", color:"#A32D2D", borderRadius:8, fontSize:11, border:"none", cursor:"pointer" }}>✕ Clear</button>}
+      </div>
+
+      {/* Filters panel */}
+      {showFilters && (
+        <div style={{ padding:"8px 16px", background:"#f0f0f5", display:"flex", gap:10, flexWrap:"wrap", alignItems:"center", borderBottom:"1px solid #eee" }}>
+          <select value={filters.quartile} onChange={e=>setFilters({...filters, quartile:e.target.value})} style={{ padding:"5px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }}>
+            <option value="">All Quartiles</option>
+            {["Q1","Q2","Q3","Q4"].map(q => <option key={q}>{q}</option>)}
+          </select>
+          <select value={filters.indexing} onChange={e=>setFilters({...filters, indexing:e.target.value})} style={{ padding:"5px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }}>
+            <option value="">All Indexing</option>
+            {["SCI","SCIE","Scopus","UGC Care","None"].map(i => <option key={i}>{i}</option>)}
+          </select>
+          <input type="number" placeholder="Year from" value={filters.year_from} onChange={e=>setFilters({...filters, year_from:e.target.value})} style={{ width:90, padding:"5px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }} />
+          <input type="number" placeholder="Year to" value={filters.year_to} onChange={e=>setFilters({...filters, year_to:e.target.value})} style={{ width:90, padding:"5px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }} />
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+        <div style={{ background:"#fff", borderRadius:12, border:"1px solid #eee", overflow:"hidden" }}>
+          {activeTab === "conference" ? (
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr style={{ background:"#f9f9f9" }}>
+                  {["Title","Conference","Location","Publisher","Date","Year","Citations","Indexing","Action"].map(h => (
+                    <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
+                ) : pubs.length === 0 ? (
+                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No conference papers found</td></tr>
+                ) : pubs.map(p => (
+                  <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
+                    <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#555" }}>{p.conference_name || p.journal_name || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.conference_location || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publisher || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publication_date || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11 }}>{p.year}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
+                    <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
+                    <td style={{ padding:"10px 14px" }}>
+                      <button onClick={()=>handleDelete(p.pub_id)} style={{ fontSize:10, color:"#A32D2D", background:"#FCEBEB", padding:"2px 8px", borderRadius:4, border:"none", cursor:"pointer" }}>🗑</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr style={{ background:"#f9f9f9" }}>
+                  {["Title","Journal","Publisher","Year","Quartile","IF","Citations","Indexing","Action"].map(h => (
+                    <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
+                ) : pubs.length === 0 ? (
+                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No publications found</td></tr>
+                ) : pubs.map(p => (
+                  <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
+                    <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.journal_name || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publisher || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11 }}>{p.year}</td>
+                    <td style={{ padding:"10px 14px" }}>
+                      {p.quartile && p.quartile !== "N/A" ? (
+                        <span style={{ fontSize:10, padding:"2px 7px", borderRadius:4, fontWeight:500, background:Q_BG[p.quartile]||"#f0f0f0", color:Q_COLORS[p.quartile]||"#888" }}>{p.quartile}</span>
+                      ) : <span style={{ fontSize:10, color:"#ccc" }}>—</span>}
+                    </td>
+                    <td style={{ padding:"10px 14px", fontSize:11 }}>{p.impact_factor || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
+                    <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
+                    <td style={{ padding:"10px 14px" }}>
+                      <button onClick={()=>handleDelete(p.pub_id)} style={{ fontSize:10, color:"#A32D2D", background:"#FCEBEB", padding:"2px 8px", borderRadius:4, border:"none", cursor:"pointer" }}>🗑</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:14, alignItems:"center" }}>
+            <button disabled={page===1} onClick={()=>setPage(page-1)} style={{ padding:"6px 14px", borderRadius:6, border:"1px solid #ddd", background:"#fff", fontSize:11, cursor:page===1?"not-allowed":"pointer", opacity:page===1?0.5:1 }}>← Prev</button>
+            {Array.from({length:Math.min(totalPages,5)}, (_,i)=>{
+              let p;
+              if (totalPages <= 5) p = i + 1;
+              else if (page <= 3) p = i + 1;
+              else if (page >= totalPages - 2) p = totalPages - 4 + i;
+              else p = page - 2 + i;
+              return (
+                <div key={p} onClick={()=>setPage(p)} style={{ width:28, height:28, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:500, cursor:"pointer", background:page===p?P:"#fff", color:page===p?"#fff":"#555", border:page===p?"none":"1px solid #eee" }}>{p}</div>
+              );
+            })}
+            <button disabled={page===totalPages} onClick={()=>setPage(page+1)} style={{ padding:"6px 14px", borderRadius:6, border:"1px solid #ddd", background:"#fff", fontSize:11, cursor:page===totalPages?"not-allowed":"pointer", opacity:page===totalPages?0.5:1 }}>Next →</button>
+          </div>
+        )}
+      </div>
+
+      {/* Add Modal */}
+      {modal && (
+        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100 }}>
+          <div style={{ background:"#fff", borderRadius:14, padding:"24px 28px", width:550, maxHeight:"90vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+              <span style={{ fontSize:16, fontWeight:600 }}>Add Publication</span>
+              <span style={{ cursor:"pointer", color:"#888", fontSize:22 }} onClick={()=>setModal(false)}>×</span>
+            </div>
+            <form onSubmit={handleAdd}>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Publication Type</label>
+                <select value={form.publication_type} onChange={e=>setForm({...form, publication_type:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }}>
+                  <option value="">Auto-detect</option>
+                  <option value="Journal">Journal Article</option>
+                  <option value="Conference">Conference Paper</option>
+                </select>
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Paper Title *</label>
+                <input type="text" required value={form.title} onChange={e=>setForm({...form, title:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Journal / Conference Name *</label>
+                  <input type="text" required value={form.journal_name} onChange={e=>setForm({...form, journal_name:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Publisher</label>
+                  <input type="text" value={form.publisher} onChange={e=>setForm({...form, publisher:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:14 }}>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Year</label>
+                  <input type="number" value={form.year} onChange={e=>setForm({...form, year:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Quartile</label>
+                  <select value={form.quartile} onChange={e=>setForm({...form, quartile:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }}>
+                    {["Q1","Q2","Q3","Q4","N/A"].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Indexing</label>
+                  <select value={form.indexing} onChange={e=>setForm({...form, indexing:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }}>
+                    {["SCI","SCIE","Scopus","UGC Care","None"].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:14 }}>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Volume</label>
+                  <input type="text" value={form.volume} onChange={e=>setForm({...form, volume:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Issue</label>
+                  <input type="text" value={form.issue} onChange={e=>setForm({...form, issue:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Pages</label>
+                  <input type="text" value={form.pages} onChange={e=>setForm({...form, pages:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>DOI</label>
+                  <input type="text" value={form.doi} onChange={e=>setForm({...form, doi:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Impact Factor</label>
+                  <input type="number" step="0.01" value={form.impact_factor} onChange={e=>setForm({...form, impact_factor:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} />
+                </div>
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Keywords (comma separated)</label>
+                <input type="text" value={form.keywords} onChange={e=>setForm({...form, keywords:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13 }} placeholder="e.g. Blockchain, Smart Contract, Security" />
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:5 }}>Abstract</label>
+                <textarea rows={3} value={form.abstract} onChange={e=>setForm({...form, abstract:e.target.value})} style={{ width:"100%", padding:"9px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:13, fontFamily:"inherit" }} />
+              </div>
+              <div style={{ display:"flex", gap:10, marginTop:18 }}>
+                <button type="button" onClick={()=>setModal(false)} style={{ flex:1, padding:10, border:"1px solid #ddd", borderRadius:8, fontSize:13, background:"#fff", cursor:"pointer" }}>Cancel</button>
+                <button type="submit" disabled={saving} style={{ flex:2, padding:10, background:P, color:"#fff", borderRadius:8, fontSize:13, fontWeight:500, border:"none", cursor:saving?"not-allowed":"pointer" }}>{saving ? "Saving..." : "Save Publication"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+}
