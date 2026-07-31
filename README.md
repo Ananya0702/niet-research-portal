@@ -137,6 +137,8 @@ http://127.0.0.1:8000/docs
 ## 👨‍💻 Author
 
 Name: Ananya Shukla  
+Name: Akanksha Singh
+
 Course: B.Tech CSE (Data Science)  
 Institute: NIET (Noida Institute of Engineering and Technology)  
 Project: NIET Research Portal (Academic Research Analytics System)
