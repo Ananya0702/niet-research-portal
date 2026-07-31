@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import API from "../services/api";
 import Layout from "../components/Layout";
 import {
@@ -8,45 +8,6 @@ import {
 
 const Q_COLORS = { Q1:"#0C447C", Q2:"#27500A", Q3:"#BA7517", Q4:"#A32D2D" };
 const D_COLORS = ["#534AB7","#0C447C","#27500A","#BA7517","#A32D2D","#088780","#888780"];
-
-const SCHOOL_DEPT_MAP = {
-  "School of CS & IT (SCSIT)": [
-    { code: "CSE",  name: "Computer Science & Engineering" },
-    { code: "IT",   name: "Information Technology" },
-  ],
-  "School of Emerging (SCSET)": [
-    { code: "CS",    name: "Computer Science" },
-    { code: "AI_DS", name: "Data Science" },
-    { code: "CYS",   name: "Cyber Security" },
-    { code: "MNC",   name: "Mathematics & Computing" },
-    { code: "CSBS",  name: "Computer Science & Business Systems" },
-    { code: "AI",    name: "Artificial Intelligence" },
-    { code: "AIML",  name: "Artificial Intelligence & Machine Learning" },
-    { code: "IoT",   name: "Internet of Things" },
-  ],
-  "School of Electronics": [
-    { code: "ECE",  name: "Electronics & Communication Engineering" },
-    { code: "EEE",  name: "Electrical & Electronics Engineering" },
-    { code: "VLSI", name: "VLSI Design" },
-  ],
-  "School of Bio": [
-    { code: "BT",   name: "Biotechnology" },
-  ],
-  "School of Mechanical Engineering": [
-    { code: "ME",   name: "Mechanical Engineering" },
-  ],
-  "School of Management": [
-    { code: "MBA",  name: "Master of Business Administration" },
-  ],
-  "School of Humanity & Applied Sciences": [
-    { code: "APPLIED", name: "Humanities & Applied Sciences" },
-  ],
-  "School of Computer Applications": [
-    { code: "MCA",  name: "Master of Computer Applications" },
-  ],
-};
-
-const SCHOOLS = Object.keys(SCHOOL_DEPT_MAP);
 
 function KPICard({ icon, label, value, sub, bg }) {
   return (
@@ -68,17 +29,34 @@ function KPICard({ icon, label, value, sub, bg }) {
 }
 
 export default function DeanDashboard() {
-  const [data,           setData]           = useState(null);
-  const [loading,        setLoading]        = useState(true);
-  const [selectedSchool, setSelectedSchool] = useState("All Schools");
-  const [selectedDept,   setSelectedDept]   = useState("All Departments");
+  const [data,      setData]      = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [refreshing,setRefreshing]= useState(false);
+  const [error,     setError]     = useState(false);
+  const [deptId,    setDeptId]    = useState(null); // null = all depts in assigned school
+
+  const load = useCallback((did) => {
+    const qs = did ? `?dept_id=${did}` : "";
+    return API.get(`/dean/dashboard${qs}`).then(res => {
+      setData(res.data);
+      return res.data;
+    });
+  }, []);
 
   useEffect(() => {
-    API.get("/dean/dashboard")
-      .then(res => setData(res.data))
-      .catch(console.error)
+    setLoading(true);
+    load(null)
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [load]);
+
+  const handleDeptChange = (did) => {
+    setDeptId(did);
+    setRefreshing(true);
+    load(did)
+      .catch(() => setError(true))
+      .finally(() => setRefreshing(false));
+  };
 
   if (loading) return (
     <Layout>
@@ -89,58 +67,22 @@ export default function DeanDashboard() {
     </Layout>
   );
 
-  if (!data) return (
+  if (error || !data) return (
     <Layout>
       <p style={{ padding:40, color:"red" }}>Error loading data.</p>
     </Layout>
   );
 
   const {
-    kpis, publications_by_year, citations_by_year,
+    scope, kpis, publications_by_year, citations_by_year,
     quartile_breakdown, publications_by_dept,
     top_faculty, dept_scorecard, latest_publications,
   } = data;
 
-  // ── School & Department Hierarchy ──────────────────────────────────────
-  const handleSchoolChange = (school) => {
-    setSelectedSchool(school);
-    setSelectedDept("All Departments");
-  };
-
-  const deptOptions = selectedSchool === "All Schools"
-    ? Object.values(SCHOOL_DEPT_MAP).flat()
-    : SCHOOL_DEPT_MAP[selectedSchool] || [];
-
-  const activeDeptCode = selectedDept === "All Departments"
-    ? null
-    : Object.values(SCHOOL_DEPT_MAP).flat()
-        .find(d => d.name === selectedDept)?.code || null;
-
-  // ── Filter helpers ──────────────────────────────────────────────────────
-  const filteredFaculty = !activeDeptCode
-    ? top_faculty
-    : top_faculty.filter(f => f.dept_code === activeDeptCode);
-
-  const filteredScorecard = !activeDeptCode
-    ? dept_scorecard
-    : dept_scorecard.filter(d => d.dept_code === activeDeptCode);
-
-  const filteredPubs = !activeDeptCode
-    ? latest_publications
-    : latest_publications.filter(p => p.dept_code === activeDeptCode);
-
-  // KPIs for selected dept
-  const deptKpis = !activeDeptCode ? kpis : (() => {
-    const sc = dept_scorecard.find(d => d.dept_code === activeDeptCode);
-    return sc ? {
-      total_publications:     sc.publications,
-      publications_this_year: filteredPubs.filter(p => p.year === new Date().getFullYear()).length,
-      total_citations:        sc.citations,
-      active_faculty:         sc.faculty_count,
-      inst_h_index:           kpis.inst_h_index,
-      avg_impact_factor:      kpis.avg_impact_factor,
-    } : kpis;
-  })();
+  const schoolName   = scope?.school_name || "Your School";
+  const departments  = scope?.departments || [];
+  const deptOptions  = departments;
+  const selectedDept = departments.find(d => d.dept_id === deptId) || null;
 
   return (
     <Layout>
@@ -156,39 +98,37 @@ export default function DeanDashboard() {
             NIET Research Analytics Portal
           </div>
           <div style={{ fontSize:12, color:"#888", marginTop:2 }}>
-            {!activeDeptCode
-              ? `Overview of research performance across all departments · ${new Date().getFullYear()}`
-              : `Showing data for ${selectedDept} · ${new Date().getFullYear()}`}
+            {!deptId
+              ? `Overview of research performance across all departments of ${schoolName} · ${new Date().getFullYear()}`
+              : `Showing data for ${selectedDept.dept_name} · ${new Date().getFullYear()}`}
           </div>
         </div>
 
         {/* School & Department Filters */}
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:12, color:"#888" }}>Filter by:</span>
-          
-          {/* School Dropdown */}
-          <select
-            value={selectedSchool}
-            onChange={e => handleSchoolChange(e.target.value)}
-            style={{
-              padding:"7px 14px", borderRadius:20,
-              border:"1px solid #ddd", fontSize:12,
-              fontWeight:500, color:"#534AB7",
-              background:"#EEEDFE", cursor:"pointer",
-              outline:"none",
-            }}>
-            <option value="All Schools">All Schools</option>
-            {SCHOOLS.map(school => (
-              <option key={school} value={school}>
-                {school}
-              </option>
-            ))}
-          </select>
 
-          {/* Department Dropdown */}
+          {/* School Dropdown — locked to assigned school */}
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <select
+              disabled
+              value={schoolName}
+              style={{
+                padding:"7px 14px", borderRadius:20,
+                border:"1px solid #ddd", fontSize:12,
+                fontWeight:500, color:"#534AB7",
+                background:"#EEEDFE", cursor:"not-allowed",
+                outline:"none", opacity:0.9,
+              }}>
+              <option value={schoolName}>{schoolName}</option>
+            </select>
+            <span title="Locked to your assigned school" style={{ fontSize:12, color:"#888", cursor:"help" }}>🔒</span>
+          </div>
+
+          {/* Department Dropdown — editable within school */}
           <select
-            value={selectedDept}
-            onChange={e => setSelectedDept(e.target.value)}
+            value={deptId ?? ""}
+            onChange={e => handleDeptChange(e.target.value === "" ? null : parseInt(e.target.value, 10))}
             style={{
               padding:"7px 14px", borderRadius:20,
               border:"1px solid #ddd", fontSize:12,
@@ -196,21 +136,18 @@ export default function DeanDashboard() {
               background:"#EEEDFE", cursor:"pointer",
               outline:"none",
             }}>
-            <option value="All Departments">All Departments</option>
+            <option value="">All Departments</option>
             {deptOptions.map(dept => (
-              <option key={dept.code} value={dept.name}>
-                {dept.code} — {dept.name}
+              <option key={dept.dept_id} value={dept.dept_id}>
+                {dept.dept_code} — {dept.dept_name}
               </option>
             ))}
           </select>
 
-          {/* Clear Filters */}
-          {(selectedSchool !== "All Schools" || selectedDept !== "All Departments") && (
+          {/* Clear Department Filter */}
+          {deptId && (
             <span
-              onClick={() => {
-                setSelectedSchool("All Schools");
-                setSelectedDept("All Departments");
-              }}
+              onClick={() => handleDeptChange(null)}
               style={{
                 fontSize:11, color:"#A32D2D", cursor:"pointer",
                 background:"#FCEBEB", padding:"4px 10px",
@@ -222,29 +159,39 @@ export default function DeanDashboard() {
 
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
 
+        {refreshing && (
+          <div style={{
+            position:"fixed", top:14, right:20, zIndex:20,
+            background:"#534AB7", color:"#fff", fontSize:11,
+            padding:"6px 14px", borderRadius:16, boxShadow:"0 4px 12px rgba(83,74,183,0.4)",
+          }}>
+            <span className="spinner" style={{ display:"inline-block", width:11, height:11, marginRight:6, verticalAlign:-1 }} /> Refreshing…
+          </div>
+        )}
+
         {/* KPI Cards */}
         <div style={{
           display:"grid", gridTemplateColumns:"repeat(6,1fr)",
           gap:10, marginBottom:14,
         }}>
           <KPICard icon="📄" label="Total Publications"
-            value={deptKpis.total_publications}
+            value={kpis.total_publications}
             sub="↑ 18.6% vs 2023" bg="#EEEDFE" />
           <KPICard icon="📚" label="Publications This Year"
-            value={deptKpis.publications_this_year}
+            value={kpis.publications_this_year}
             sub="↑ 22.4% vs 2023" bg="#E6F1FB" />
           <KPICard icon="💬" label="Total Citations"
-            value={deptKpis.total_citations?.toLocaleString()}
+            value={kpis.total_citations?.toLocaleString()}
             sub="↑ 20.1% vs 2023" bg="#EAF3DE" />
           <KPICard icon="👥" label="Active Faculty"
-            value={deptKpis.active_faculty}
-            sub={!activeDeptCode ? "across all depts" : selectedDept}
+            value={kpis.active_faculty}
+            sub={!deptId ? `across all depts of ${schoolName}` : selectedDept.dept_name}
             bg="#FAEEDA" />
           <KPICard icon="🏆" label="h-index (Institution)"
-            value={deptKpis.inst_h_index}
+            value={kpis.inst_h_index}
             sub="↑ 6 vs 2023" bg="#E1F5EE" />
           <KPICard icon="🎯" label="Avg Impact Factor"
-            value={deptKpis.avg_impact_factor}
+            value={kpis.avg_impact_factor}
             sub="↑ 0.35 vs 2023" bg="#FCEBEB" />
         </div>
 
@@ -283,28 +230,24 @@ export default function DeanDashboard() {
                     <Cell
                       key={i}
                       fill={D_COLORS[i] || "#aaa"}
-                      opacity={
-                        !activeDeptCode || activeDeptCode === d.dept
-                          ? 1 : 0.25
-                      }
+                      opacity={!deptId || deptId === (departments.find(x => x.dept_code === d.dept) || {}).dept_id ? 1 : 0.25}
                     />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v, n, p) => [v, p.payload.dept]} />
+                <Tooltip formatter={(v, n, p) => [v, p.payload.name]} />
               </PieChart>
               <div>
                 {publications_by_dept.map((d, i) => (
                   <div
                     key={i}
                     onClick={() => {
-                      const dept = Object.values(SCHOOL_DEPT_MAP).flat()
-                        .find(x => x.code === d.dept);
-                      if (dept) setSelectedDept(dept.name);
+                      const dept = departments.find(x => x.dept_code === d.dept);
+                      if (dept) handleDeptChange(dept.dept_id);
                     }}
                     style={{
                       display:"flex", alignItems:"center",
                       gap:5, marginBottom:4, cursor:"pointer",
-                      opacity: !activeDeptCode || activeDeptCode === d.dept
+                      opacity: !deptId || deptId === d.dept_id
                         ? 1 : 0.4,
                     }}>
                     <span style={{
@@ -365,25 +308,22 @@ export default function DeanDashboard() {
               alignItems:"center", marginBottom:12 }}>
               <span style={cardTitle}>
                 Top Faculty — By Research Score
-                {activeDeptCode &&
+                {deptId &&
                   <span style={{ fontSize:11, color:"#534AB7",
                     marginLeft:8, fontWeight:400 }}>
-                    ({selectedDept})
+                    ({selectedDept.dept_name})
                   </span>}
               </span>
-              {activeDeptCode && (
-                <span onClick={() => {
-                  setSelectedSchool("All Schools");
-                  setSelectedDept("All Departments");
-                }} style={{
+              {deptId && (
+                <span onClick={() => handleDeptChange(null)} style={{
                   fontSize:11, color:"#534AB7", cursor:"pointer",
                 }}>Show All</span>
               )}
             </div>
-            {filteredFaculty.length === 0 ? (
+            {top_faculty.length === 0 ? (
               <div style={{ padding:"20px 0", textAlign:"center",
                 color:"#aaa", fontSize:13 }}>
-                No faculty data for {selectedDept}
+                No faculty data for {selectedDept?.dept_name || schoolName}
               </div>
             ) : (
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -399,7 +339,7 @@ export default function DeanDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filteredFaculty.map((f, i) => (
+                {top_faculty.map((f, i) => (
                   <tr key={f.faculty_id}>
                     <td style={{ padding:"8px 8px", fontSize:12,
                       color:"#888" }}>{i + 1}</td>
@@ -450,10 +390,10 @@ export default function DeanDashboard() {
             alignItems:"center", marginBottom:12 }}>
             <span style={cardTitle}>
               Department Scorecard & Rankings
-              {activeDeptCode &&
+              {deptId &&
                 <span style={{ fontSize:11, color:"#534AB7",
                   marginLeft:8, fontWeight:400 }}>
-                  — filtered to {selectedDept}
+                  — filtered to {selectedDept.dept_name}
                 </span>}
             </span>
             <span style={{ fontSize:11, color:"#888" }}>
@@ -474,12 +414,10 @@ export default function DeanDashboard() {
               </tr>
             </thead>
             <tbody>
-              {filteredScorecard.map((d, i) => {
-                const rank = activeDeptCode ? dept_scorecard.findIndex(x => x.dept_id === d.dept_id) + 1 : i + 1;
-                return (
+              {dept_scorecard.map((d, i) => (
                 <tr key={d.dept_id}
                   style={{
-                    background: d.dept_code === activeDeptCode
+                    background: d.dept_id === deptId
                       ? "#EEEDFE" : i===0 ? "#FAFAFA" : "#fff",
                   }}>
                   <td style={{ padding:"9px 10px" }}>
@@ -488,7 +426,7 @@ export default function DeanDashboard() {
                       color: i===0?"#BA7517":i===1?"#888":
                              i===2?"#A32D2D":"#aaa",
                     }}>
-                      {rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`}
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
                     </span>
                   </td>
                   <td style={{ padding:"9px 10px", fontSize:13,
@@ -511,8 +449,7 @@ export default function DeanDashboard() {
                   <td style={{ padding:"9px 10px", fontSize:14,
                     fontWeight:700, color:"#534AB7" }}>{d.score}</td>
                 </tr>
-              );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -523,18 +460,18 @@ export default function DeanDashboard() {
             alignItems:"center", marginBottom:12 }}>
             <span style={cardTitle}>
               Latest Publications
-              {activeDeptCode &&
+              {deptId &&
                 <span style={{ fontSize:11, color:"#534AB7",
-                  marginLeft:8, fontWeight:400 }}>({selectedDept})</span>}
+                  marginLeft:8, fontWeight:400 }}>({selectedDept.dept_name})</span>}
             </span>
             <span style={{ fontSize:12, color:"#534AB7", cursor:"pointer" }}>
               View All
             </span>
           </div>
-          {filteredPubs.length === 0 ? (
+          {latest_publications.length === 0 ? (
             <div style={{ padding:"20px 0", textAlign:"center",
               color:"#aaa", fontSize:13 }}>
-              No publications found for {selectedDept}
+              No publications found for {selectedDept?.dept_name || schoolName}
             </div>
           ) : (
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -551,7 +488,7 @@ export default function DeanDashboard() {
               </tr>
             </thead>
             <tbody>
-              {filteredPubs.map((p, i) => (
+              {latest_publications.map((p, i) => (
                 <tr key={i} style={{ borderBottom:"1px solid #f5f5f5" }}>
                   <td style={{
                     padding:"9px 10px", fontSize:12, color:"#185FA5",

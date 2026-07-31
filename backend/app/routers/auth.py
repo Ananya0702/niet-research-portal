@@ -39,7 +39,8 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "name": faculty.name,
         "email": faculty.email,
         "role": faculty.role,
-        "dept_id": faculty.dept_id
+        "dept_id": faculty.dept_id,
+        "school_id": faculty.school_id
     })
 
     return {
@@ -47,7 +48,9 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "role": faculty.role,
         "name": faculty.name,
-        "faculty_id": faculty.faculty_id
+        "faculty_id": faculty.faculty_id,
+        "dept_id": faculty.dept_id,
+        "school_id": faculty.school_id
     }
 
 

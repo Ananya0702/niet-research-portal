@@ -135,6 +135,7 @@ def get_all_faculty(db: Session = Depends(get_db),
                     current=Depends(get_current_admin)):
     faculty = db.query(Faculty).order_by(Faculty.dept_id, Faculty.name).all()
     depts = {d.dept_id: d.dept_name for d in db.query(Department).all()}
+    schools = {s.school_id: s.school_name for s in db.query(School).all()}
     return [
         {
             "faculty_id":        f.faculty_id,
@@ -144,6 +145,8 @@ def get_all_faculty(db: Session = Depends(get_db),
             "designation":       f.designation,
             "dept_id":           f.dept_id,
             "dept_name":         depts.get(f.dept_id, "—"),
+            "school_id":         f.school_id,
+            "school_name":       schools.get(f.school_id, "—"),
             "is_phd":            f.is_phd,
             "joining_year":      f.joining_year,
             "google_scholar_id": f.google_scholar_id,
@@ -194,7 +197,7 @@ def update_faculty(faculty_id: int, data: dict,
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty not found")
 
-    allowed = ["name","designation","dept_id","is_phd",
+    allowed = ["name","designation","dept_id","school_id","is_phd",
                "joining_year","google_scholar_id","role","is_active"]
     for key in allowed:
         if key in data:
@@ -341,3 +344,99 @@ def delete_department(dept_id: int, db: Session = Depends(get_db),
     db.delete(dept)
     db.commit()
     return {"message": "Department deleted"}
+
+# ── Faculty Details (publications with descriptions) ────────────────────────
+@router.get("/faculty-details")
+def get_faculty_details(db: Session = Depends(get_db),
+                        current=Depends(get_current_admin)):
+    """Return all active faculty with their publications, each including
+       a generated description and citation data."""
+    faculty_list = db.query(Faculty).filter(Faculty.is_active == True).order_by(Faculty.name).all()
+    depts = {d.dept_id: d.dept_name for d in db.query(Department).all()}
+
+    result = []
+    for f in faculty_list:
+        pubs = db.query(Publication).filter(
+            Publication.faculty_id == f.faculty_id
+        ).order_by(Publication.year.desc()).all()
+
+        pub_list = []
+        for p in pubs:
+            pd = {
+                "pub_id":      p.pub_id,
+                "title":       p.title,
+                "journal_name": p.journal_name or "",
+                "conference_name": p.conference_name or "",
+                "year":        p.year,
+                "citations_count": p.citations_count or 0,
+                "publication_type": p.publication_type or "",
+                "doi":         p.doi or "",
+                "indexing":    p.indexing or "None",
+                "quartile":    p.quartile or "N/A",
+                "keywords":    p.keywords or "",
+                "abstract":    p.abstract or "",
+                "ml_topic":    p.ml_topic or "",
+                "research_area": p.research_area or "",
+                "publisher":   p.publisher or "",
+                "volume":      p.volume or "",
+                "issue":       p.issue or "",
+                "pages":       p.pages or "",
+                "issn":        p.issn or "",
+                "isbn":        p.isbn or "",
+                "status":      p.status or "Published",
+            }
+            # Generate description (same logic as publications.py)
+            desc_parts = []
+            if not p.abstract:
+                if p.ml_topic:
+                    desc_parts.append(f"This research focuses on {p.ml_topic}.")
+                if p.research_area:
+                    desc_parts.append(f"It falls under the research area of {p.research_area}.")
+                if p.keywords:
+                    kw_list = [k.strip() for k in p.keywords.split(",") if k.strip()]
+                    if kw_list:
+                        desc_parts.append(f"Key topics include {', '.join(kw_list[:6])}.")
+                venue = p.conference_name or p.journal_name or ""
+                if venue and venue != "Unknown Journal":
+                    desc_parts.append(f"Published in {venue} ({p.year}).")
+                elif p.year:
+                    desc_parts.append(f"Published in {p.year}.")
+                pd["description"] = " ".join(desc_parts) if desc_parts else p.title
+            else:
+                pd["description"] = p.abstract
+
+            # Citation yearly distribution
+            from app.models import CitationYearly
+            fac_yearly = db.query(CitationYearly).filter(
+                CitationYearly.faculty_id == f.faculty_id
+            ).order_by(CitationYearly.year).all()
+            if fac_yearly and (p.citations_count or 0) > 0:
+                total_fac_cit = sum(c.citations_count for c in fac_yearly)
+                pd["citations_by_year"] = [
+                    {"year": c.year, "count": round((p.citations_count or 0) * c.citations_count / total_fac_cit)}
+                    for c in fac_yearly
+                ]
+                pd["total_citations"] = p.citations_count or 0
+            else:
+                pd["citations_by_year"] = []
+                pd["total_citations"] = p.citations_count or 0
+
+            pub_list.append(pd)
+
+        result.append({
+            "faculty_id":   f.faculty_id,
+            "name":         f.name,
+            "email":        f.email,
+            "role":         f.role,
+            "designation":  f.designation,
+            "dept_id":      f.dept_id,
+            "dept_name":    depts.get(f.dept_id, "—"),
+            "school_id":    f.school_id,
+            "is_phd":       f.is_phd,
+            "h_index":      f.h_index or 0,
+            "total_publications": len(pub_list),
+            "total_citations":    f.total_citations or 0,
+            "publications": pub_list,
+        })
+
+    return result

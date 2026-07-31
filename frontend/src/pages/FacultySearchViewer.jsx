@@ -45,7 +45,7 @@ const DEPARTMENTS = [
 
 const BRANCHES = ["All Branches","CSE","IT","CS","DS/AI_DS","CYS","MNC","CSBS","AI","AIML","IoT","ECE","EEE","VLSI","BT","ME","MBA","HAS/APPLIED","MCA"];
 
-const HODS = ["All HODs / Deans","Dr. Arvind Sharma (HOD - CSE)","Dr. Neha Gupta (HOD - IT)","Dr. Rajesh Kumar (Dean R&D)","Dr. Priya Singh (HOD - ECE)"];
+const HODS = ["All HODs / Deans","Dr. Arvind Sharma (HOD - CSE)","Dr. Neha Gupta (HOD - IT)","Dr. Rajesh Kumar (Dean)","Dr. Priya Singh (HOD - ECE)"];
 
 const FACULTY_NAMES = [
   "Dr. Arvind Kumar Sharma","Dr. Neha Gupta","Dr. Rajesh Kumar","Dr. Priya Singh",
@@ -88,7 +88,7 @@ const MOCK_FACULTY = {
     school:"School of CS & IT",
     department:"Computer Science & Engineering",
     branch:"CSE",
-    reporting_dean:"Dr. Rajesh Kumar (Dean R&D)",
+    reporting_dean:"Dr. Rajesh Kumar (Dean)",
     reporting_hod:"Self (HOD)",
     subjects_teaching:["Advanced Machine Learning","Deep Learning","Data Structures & Algorithms","AI in IoT"],
     research_areas:["AI","ML","NLP","Data Mining","Deep Learning","Computer Vision"],

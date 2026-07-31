@@ -2,22 +2,50 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models import Faculty, Publication, CitationYearly, Project, Patent, Achievement
+from app.models import Faculty, Publication, CitationYearly, Project, Patent, Achievement, Department, School
 from app.routers.auth import get_current_faculty
 from collections import defaultdict
 from datetime import datetime
 
 router = APIRouter()
 
+
+def _resolve_hod_scope(db, current):
+    """Return (hod_faculty, school, dept) enforcing RBAC.
+
+    The HOD's scope is derived from the authoritative DB record — never from
+    request parameters. The school is derived from the assigned department.
+    """
+    if current.get("role") not in ["hod", "dean_rd"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    hod = db.query(Faculty).filter(
+        Faculty.faculty_id == current.get("faculty_id")
+    ).first()
+    if not hod:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    dept_id = hod.dept_id
+    if not dept_id:
+        raise HTTPException(status_code=403, detail="No department assigned to this account")
+
+    dept = db.query(Department).filter(Department.dept_id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=403, detail="Assigned department not found")
+
+    school = None
+    if dept.school_id:
+        school = db.query(School).filter(School.school_id == dept.school_id).first()
+
+    return hod, school, dept
+
+
 @router.get("/dashboard")
 def get_hod_dashboard(db: Session = Depends(get_db),
                       current=Depends(get_current_faculty)):
 
-    # Only HOD or Dean can access
-    if current["role"] not in ["hod", "dean_rd"]:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    dept_id = current["dept_id"]
+    hod, school, dept = _resolve_hod_scope(db, current)
+    dept_id = dept.dept_id
 
     # All faculty in this department
     all_faculty = db.query(Faculty).filter(
@@ -116,6 +144,21 @@ def get_hod_dashboard(db: Session = Depends(get_db),
         dept_citations_by_year[c.year] += c.citations_count
 
     return {
+        "scope": {
+            "role":        "hod",
+            "school_id":   school.school_id if school else None,
+            "school_name": school.school_name if school else "",
+            "dept_id":     dept.dept_id,
+            "dept_code":   dept.dept_code,
+            "dept_name":   dept.dept_name,
+            "departments": [
+                {
+                    "dept_id":   dept.dept_id,
+                    "dept_code": dept.dept_code,
+                    "dept_name": dept.dept_name,
+                }
+            ],
+        },
         "dept_id":   dept_id,
         "kpis": {
             "total_publications":     len(all_pubs),
@@ -168,10 +211,8 @@ def get_hod_dashboard(db: Session = Depends(get_db),
 @router.get("/faculty-intelligence")
 def get_faculty_intelligence(db: Session = Depends(get_db),
                               current=Depends(get_current_faculty)):
-    if current["role"] not in ["hod", "dean_rd"]:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    dept_id     = current["dept_id"]
+    hod, school, dept = _resolve_hod_scope(db, current)
+    dept_id = dept.dept_id
     all_faculty = db.query(Faculty).filter(
         Faculty.dept_id == dept_id,
         Faculty.is_active == True

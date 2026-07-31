@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { getPublications, getPubCounts, addPublication, deletePublication } from "../services/api";
+import { getPublications, getPubCounts, addPublication, deletePublication, getDepartments, getSchools, getMyProfile } from "../services/api";
 
 const P = "#534AB7";
 const PL = "rgba(83,74,183,0.08)";
@@ -24,6 +24,14 @@ const TABS = [
 const Q_COLORS = { Q1:"#0C447C", Q2:"#27500A", Q3:"#BA7517", Q4:"#A32D2D" };
 const Q_BG    = { Q1:"#E6F1FB", Q2:"#EAF3DE", Q3:"#FAEEDA", Q4:"#FCEBEB" };
 
+const SCOPE_LABELS = {
+  my: "My Publications",
+  department: "Department Publications",
+  school: "School Publications",
+  faculty: "Faculty Publications",
+  all: "All Publications",
+};
+
 export default function Publications() {
   const navigate = useNavigate();
   const [pubs, setPubs] = useState([]);
@@ -41,33 +49,119 @@ export default function Publications() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [scope, setScope] = useState("my");
+  const [userRole, setUserRole] = useState("");
+  const [userSchoolId, setUserSchoolId] = useState(null);
+  const [userDeptId, setUserDeptId] = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [selectedDeptId, setSelectedDeptId] = useState("");
+  const [schoolName, setSchoolName] = useState("");
+  const [deptName, setDeptName] = useState("");
+  const [schools, setSchools] = useState([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState("");
+
+  // Decode JWT
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem("token");
+      if (t) {
+        const payload = JSON.parse(atob(t.split(".")[1]));
+        setUserRole(payload.role || "");
+        setUserSchoolId(payload.school_id || null);
+        setUserDeptId(payload.dept_id || null);
+      }
+    } catch {}
+  }, []);
+
+  // Fetch profile (school/dept names)
+  useEffect(() => {
+    getMyProfile().then(r => {
+      setSchoolName(r.data.school_name || "");
+      setDeptName(r.data.dept_name || "");
+      if (!userSchoolId) setUserSchoolId(r.data.school_id);
+      if (!userDeptId) setUserDeptId(r.data.dept_id);
+    }).catch(() => {});
+  }, []);
+
+  // Fetch departments and schools
+  useEffect(() => {
+    if (userRole === "dean_rd" && userSchoolId) {
+      getDepartments(userSchoolId).then(r => setDepartments(r.data)).catch(() => {});
+    }
+    if (userRole === "admin") {
+      getSchools().then(r => { setSchools(r.data); }).catch(() => {});
+    }
+  }, [userRole, userSchoolId]);
+
+  // Admin: fetch departments when school selected
+  useEffect(() => {
+    if (userRole === "admin" && selectedSchoolId) {
+      getDepartments(parseInt(selectedSchoolId)).then(r => setDepartments(r.data)).catch(() => {});
+    }
+  }, [userRole, selectedSchoolId]);
+
+  // Define available scopes based on role
+  const getScopeOptions = () => {
+    switch (userRole) {
+      case "faculty": return ["my"];
+      case "hod": return ["my", "department"];
+      case "dean_rd": return ["my", "school"];
+      case "admin": return ["my", "faculty", "department", "school", "all"];
+      default: return ["my"];
+    }
+  };
+  const scopeOptions = getScopeOptions();
+
+  // Reset scope if current one not available for role
+  useEffect(() => {
+    if (scopeOptions.length > 0 && !scopeOptions.includes(scope)) {
+      setScope(scopeOptions[0]);
+    }
+  }, [userRole]);
+
+  const paramsForAPI = useCallback(() => {
+    const p = { page, per_page: perPage, search, scope };
+    if (activeTab === "journal") p.pub_type = "Journal";
+    else if (activeTab === "conference") p.pub_type = "Conference";
+    if (filters.quartile) p.quartile = filters.quartile;
+    if (filters.indexing) p.indexing = filters.indexing;
+    if (filters.year_from) p.year_from = parseInt(filters.year_from);
+    if (filters.year_to) p.year_to = parseInt(filters.year_to);
+    // Dean: pass dept_id filter when department selected
+    if (userRole === "dean_rd" && selectedDeptId) p.dept_id = parseInt(selectedDeptId);
+    // Admin: pass school_id/dept_id based on scope
+    if (userRole === "admin" && scope === "department" && selectedDeptId) p.dept_id = parseInt(selectedDeptId);
+    return p;
+  }, [page, perPage, activeTab, search, filters, scope, userRole, selectedDeptId]);
 
   const fetchPubs = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, per_page: perPage, search, pub_type: activeTab==="all" ? "" : activeTab };
-      if (filters.quartile) params.quartile = filters.quartile;
-      if (filters.indexing) params.indexing = filters.indexing;
-      if (filters.year_from) params.year_from = parseInt(filters.year_from);
-      if (filters.year_to) params.year_to = parseInt(filters.year_to);
-      const res = await getPublications(params);
+      const res = await getPublications(paramsForAPI());
       setPubs(res.data.publications);
       setTotal(res.data.total);
       setTotalPages(res.data.total_pages);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [page, perPage, activeTab, search, filters]);
+  }, [paramsForAPI]);
 
   const fetchCounts = useCallback(async () => {
-    try { const r = await getPubCounts(); setCounts(r.data); }
-    catch { /* ignore */ }
-  }, []);
+    try {
+      const params = { scope };
+      if (userRole === "dean_rd" && selectedDeptId) params.dept_id = parseInt(selectedDeptId);
+      if (userRole === "admin" && scope === "department" && selectedDeptId) params.dept_id = parseInt(selectedDeptId);
+      const r = await getPubCounts(params);
+      setCounts(r.data);
+    } catch {}
+  }, [scope, userRole, selectedDeptId]);
 
   useEffect(() => { fetchPubs(); fetchCounts(); }, [fetchPubs, fetchCounts]);
 
   const handleSearch = () => { setSearch(searchInput); setPage(1); };
 
   const handleTabChange = (tab) => { setActiveTab(tab); setPage(1); };
+
+  const handleScopeChange = (s) => { setScope(s); setPage(1); setSelectedDeptId(""); };
 
   const clearFilters = () => {
     setFilters({ quartile:"", indexing:"", year_from:"", year_to:"" });
@@ -102,6 +196,10 @@ export default function Publications() {
     { icon:"🎤", label:"Conference Papers", value:counts.conference, bg:"#FAEEDA", color:"#633806" },
   ];
 
+  const scopeLabel = SCOPE_LABELS[scope] || "Publications";
+
+  const isFrozen = userRole === "faculty" || userRole === "hod";
+
   return (
     <Layout>
       {/* Topbar */}
@@ -126,6 +224,63 @@ export default function Publications() {
         ))}
       </div>
 
+      {/* Scope Toolbar + School/Department labels */}
+      {scopeOptions.length > 1 && (
+        <div style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 16px 0", background:"#f7f7f8", flexWrap:"wrap" }}>
+          <span style={{ fontSize:12, color:"#888", fontWeight:500 }}>Publication Scope:</span>
+          <div style={{ display:"flex", background:"#fff", borderRadius:8, border:"1px solid #ddd", overflow:"hidden" }}>
+            {scopeOptions.map(s => (
+              <div key={s} onClick={()=>handleScopeChange(s)} style={{
+                padding:"6px 18px", fontSize:12, fontWeight:500, cursor:"pointer",
+                background: scope===s ? P : "#fff",
+                color: scope===s ? "#fff" : "#555",
+                transition:"all 0.15s",
+              }}>{SCOPE_LABELS[s]}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Frozen School / Department labels (Faculty / HOD) */}
+      {isFrozen && (
+        <div style={{ display:"flex", gap:16, padding:"6px 16px 0", background:"#f7f7f8", fontSize:11, color:"#888" }}>
+          <span>School: <strong style={{color:"#555"}}>{schoolName || "—"}</strong> 🔒</span>
+          <span>Department: <strong style={{color:"#555"}}>{deptName || "—"}</strong> 🔒</span>
+        </div>
+      )}
+
+      {/* Dean: School frozen + Department dropdown */}
+      {userRole === "dean_rd" && (
+        <>
+          <div style={{ display:"flex", gap:16, padding:"6px 16px 0", background:"#f7f7f8", fontSize:11, color:"#888" }}>
+            <span>School: <strong style={{color:"#555"}}>{schoolName || "—"}</strong> 🔒</span>
+          </div>
+          <div style={{ display:"flex", gap:10, alignItems:"center", padding:"4px 16px 0", background:"#f7f7f8", flexWrap:"wrap" }}>
+            <span style={{ fontSize:11, color:"#888", fontWeight:500 }}>Department:</span>
+            <select value={selectedDeptId} onChange={e=>{setSelectedDeptId(e.target.value); setPage(1);}} style={{ padding:"4px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none", background:"#fff" }}>
+              <option value="">All Departments</option>
+              {departments.map(d => <option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}
+            </select>
+          </div>
+        </>
+      )}
+
+      {/* Admin: School + Department dropdowns (nothing frozen) */}
+      {userRole === "admin" && (
+        <div style={{ display:"flex", gap:10, alignItems:"center", padding:"4px 16px 0", background:"#f7f7f8", flexWrap:"wrap" }}>
+          <span style={{ fontSize:11, color:"#888", fontWeight:500 }}>School:</span>
+          <select value={selectedSchoolId} onChange={e=>{setSelectedSchoolId(e.target.value); setSelectedDeptId(""); setPage(1);}} style={{ padding:"4px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none", background:"#fff" }}>
+            <option value="">All Schools</option>
+            {schools.map(s => <option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}
+          </select>
+          <span style={{ fontSize:11, color:"#888", fontWeight:500 }}>Department:</span>
+          <select value={selectedDeptId} onChange={e=>{setSelectedDeptId(e.target.value); setPage(1);}} style={{ padding:"4px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none", background:"#fff" }}>
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}
+          </select>
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={{ display:"flex", gap:0, padding:"8px 16px 0", background:"#f7f7f8", borderBottom:"1px solid #eee" }}>
         {TABS.map(t => (
@@ -137,7 +292,7 @@ export default function Publications() {
       <div style={{ padding:"10px 16px", background:"#f7f7f8", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
         <div style={{ position:"relative", flex:1, minWidth:200 }}>
           <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:13, color:"#aaa" }}>🔍</span>
-          <input value={searchInput} onChange={e=>setSearchInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSearch()} placeholder="Search by title, author, DOI, keyword..." style={{ width:"100%", padding:"7px 12px 7px 32px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none", background:"#fff" }} />
+          <input value={searchInput} onChange={e=>setSearchInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSearch()} placeholder={`Search ${scopeLabel.toLowerCase()} by title, author, keyword, DOI...`} style={{ width:"100%", padding:"7px 12px 7px 32px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none", background:"#fff" }} />
         </div>
         <button onClick={handleSearch} style={{ padding:"7px 16px", background:P, color:"#fff", borderRadius:8, fontSize:12, border:"none", cursor:"pointer" }}>Search</button>
         <button onClick={()=>setShowFilters(!showFilters)} style={{ padding:"7px 16px", background:showFilters?PL:"#fff", color:showFilters?P:"#555", borderRadius:8, fontSize:12, border:"1px solid #ddd", cursor:"pointer" }}>⚙ Filters {hasFilters ? `(${Object.values(filters).filter(Boolean).length+(search?1:0)})` : ""}</button>
@@ -167,7 +322,7 @@ export default function Publications() {
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:"#f9f9f9" }}>
-                  {["Title","Conference","Location","Publisher","Date","Year","Citations","Indexing","Action"].map(h => (
+                  {["Title","Authors","Conference Name","Location","Year","Publisher","Citations","Indexing","Action"].map(h => (
                     <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -176,15 +331,15 @@ export default function Publications() {
                 {loading ? (
                   <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
                 ) : pubs.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No conference papers found</td></tr>
+                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No conference papers found in {scopeLabel.toLowerCase()}</td></tr>
                 ) : pubs.map(p => (
                   <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
-                    <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
-                    <td style={{ padding:"10px 14px", fontSize:11, color:"#555" }}>{p.conference_name || p.journal_name || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.faculty_name || "—"}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.conference_name || p.journal_name || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.conference_location || "—"}</td>
-                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publisher || "—"}</td>
-                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publication_date || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11 }}>{p.year}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publisher || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
                     <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
                     <td style={{ padding:"10px 14px" }}>
@@ -194,11 +349,11 @@ export default function Publications() {
                 ))}
               </tbody>
             </table>
-          ) : (
+          ) : activeTab === "journal" ? (
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:"#f9f9f9" }}>
-                  {["Title","Journal","Publisher","Year","Quartile","IF","Citations","Indexing","Action"].map(h => (
+                  {["Title","Authors","Journal","Year","Quartile","IF","Citations","Indexing","Action"].map(h => (
                     <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -207,12 +362,12 @@ export default function Publications() {
                 {loading ? (
                   <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
                 ) : pubs.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No publications found</td></tr>
+                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No journal articles found in {scopeLabel.toLowerCase()}</td></tr>
                 ) : pubs.map(p => (
                   <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
-                    <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
+                    <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.faculty_name || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.journal_name || "—"}</td>
-                    <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publisher || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11 }}>{p.year}</td>
                     <td style={{ padding:"10px 14px" }}>
                       {p.quartile && p.quartile !== "N/A" ? (
@@ -227,6 +382,47 @@ export default function Publications() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          ) : (
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr style={{ background:"#f9f9f9" }}>
+                  {["Title","Authors","Type","Journal / Conference","Year","Quartile","Citations","Indexing","Action"].map(h => (
+                    <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
+                ) : pubs.length === 0 ? (
+                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No publications found in {scopeLabel.toLowerCase()}</td></tr>
+                ) : pubs.map(p => {
+                  const pt = p.publication_type === "Conference" ? "Conference" : "Journal";
+                  const isConf = pt === "Conference";
+                  return (
+                    <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
+                      <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
+                      <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.faculty_name || "—"}</td>
+                      <td style={{ padding:"10px 14px" }}>
+                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:4, fontWeight:500, background:isConf ? "#FAEEDA" : "#E6F1FB", color:isConf ? "#633806" : "#0C447C" }}>{pt}</span>
+                      </td>
+                      <td style={{ padding:"10px 14px", fontSize:11, color:"#555", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{isConf ? (p.conference_name || p.journal_name || "—") : (p.journal_name || "—")}</td>
+                      <td style={{ padding:"10px 14px", fontSize:11 }}>{p.year}</td>
+                      <td style={{ padding:"10px 14px" }}>
+                        {p.quartile && p.quartile !== "N/A" ? (
+                          <span style={{ fontSize:10, padding:"2px 7px", borderRadius:4, fontWeight:500, background:Q_BG[p.quartile]||"#f0f0f0", color:Q_COLORS[p.quartile]||"#888" }}>{p.quartile}</span>
+                        ) : <span style={{ fontSize:10, color:"#ccc" }}>—</span>}
+                      </td>
+                      <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
+                      <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
+                      <td style={{ padding:"10px 14px" }}>
+                        <button onClick={()=>handleDelete(p.pub_id)} style={{ fontSize:10, color:"#A32D2D", background:"#FCEBEB", padding:"2px 8px", borderRadius:4, border:"none", cursor:"pointer" }}>🗑</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

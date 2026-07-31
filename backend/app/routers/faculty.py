@@ -33,12 +33,25 @@ def get_my_profile(db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Not found")
 
     dept_name = None
+    dept_code = None
+    school_name = None
+    school_id = faculty.school_id
     if faculty.dept_id:
-        from app.models import Department
+        from app.models import Department, School
         dept = db.query(Department).filter(
             Department.dept_id == faculty.dept_id
         ).first()
-        dept_name = dept.dept_name if dept else None
+        if dept:
+            dept_name = dept.dept_name
+            dept_code = dept.dept_code
+            if dept.school:
+                school_name = dept.school.school_name
+                school_id = dept.school.school_id
+    if not school_name and faculty.school_id:
+        from app.models import School
+        sch = db.query(School).filter(School.school_id == faculty.school_id).first()
+        if sch:
+            school_name = sch.school_name
 
     return {
         "faculty_id":        faculty.faculty_id,
@@ -47,6 +60,10 @@ def get_my_profile(db: Session = Depends(get_db),
         "designation":       faculty.designation,
         "role":              faculty.role,
         "dept_name":         dept_name,
+        "dept_code":         dept_code,
+        "dept_id":           faculty.dept_id,
+        "school_name":       school_name,
+        "school_id":         school_id,
         "is_phd":            faculty.is_phd,
         "joining_year":      faculty.joining_year,
         "google_scholar_id": faculty.google_scholar_id,

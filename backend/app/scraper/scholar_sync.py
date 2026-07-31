@@ -72,19 +72,19 @@ def fetch_scholar_data(scholar_id: str, mock: bool = True):
     if mock or not scholar_id:
         return _sample_scholar_data()
 
-    # Tier 1: Try scholarly library
-    try:
-        return _fetch_via_scholarly(scholar_id)
-    except Exception as e:
-        print(f"[Scholar] scholarly failed: {e}")
-
-    # Tier 2: Try direct HTTP scraping
+    # Tier 1: Direct HTTP scraping (fast — single request)
     try:
         return _fetch_via_http(scholar_id)
     except Exception as e:
         print(f"[Scholar] HTTP scraping failed: {e}")
 
-    # Tier 3: All methods failed -- don't silently inject fake data
+    # Tier 2: scholarly library (slow — fills each pub individually)
+    try:
+        return _fetch_via_scholarly(scholar_id)
+    except Exception as e:
+        print(f"[Scholar] scholarly failed: {e}")
+
+    # Tier 3: All methods failed
     raise Exception("Could not fetch from Google Scholar (rate limited or blocked). Please try again later.")
 
 

@@ -21,6 +21,10 @@ CONFERENCE_INDICATORS = [
     "icb", "btas", "icmla", "icit", "icacci", "iccct", "icccnt",
     "icacc", "icissp", "iciss", "icic", "icnc", "aita", "icact",
     "icc", "globecom", "infocom", "icon", "icn", "icdcn",
+    "int. conf.", "international conference", "intl conf",
+    "ieee conference", "springer conference", "elsevier conference",
+    "acm conference", "int. symposium", "international symposium",
+    "springer berlin", "crc press", "aip conference",
 ]
 JOURNAL_INDICATORS = [
     "journal", "ieee access", "nature", "elsevier", "springer",
@@ -34,53 +38,114 @@ JOURNAL_INDICATORS = [
 
 
 def classify_publication_type(title: str, journal_name: str) -> str:
+    venue = (journal_name or "").lower().strip()
     combined = f"{title} {journal_name}".lower()
+
+    # Priority 1: venue name (journal_name) indicates conference
+    for ind in CONFERENCE_INDICATORS:
+        if ind in venue:
+            return "Conference"
+    # Priority 2: venue name indicates journal
+    for ind in JOURNAL_INDICATORS:
+        if ind in venue:
+            return "Journal"
+    # Priority 3: combined title+venue
     for ind in CONFERENCE_INDICATORS:
         if ind in combined:
             return "Conference"
+    # Priority 4: combined title+venue
     for ind in JOURNAL_INDICATORS:
         if ind in combined:
             return "Journal"
     return "Journal"
 
 
-def _resolve_scope(db: Session, current: dict, scope: str):
-    """Return (faculty_ids, school_name) based on scope for the current user.
-    For non-dean roles, always return just their own faculty_id."""
+def _resolve_scope(db: Session, current: dict, scope: str, dept_id: int = None):
+    """Return (faculty_ids, school_name) based on role + scope.
+    Supports: faculty, hod, dean_rd, admin roles."""
     role = current["role"]
+    uid = current["faculty_id"]
 
-    if role != "dean_rd":
-        return [current["faculty_id"]], ""
+    # --- FACULTY: always own data ---
+    if role == "faculty":
+        return [uid], ""
 
-    # Dean role
-    dean_id = current["faculty_id"]
-    dean = db.query(Faculty).filter(Faculty.faculty_id == dean_id).first()
-    if not dean:
-        raise HTTPException(403, "Dean not found")
+    # --- HOD ---
+    if role == "hod":
+        hod = db.query(Faculty).filter(Faculty.faculty_id == uid).first()
+        if not hod:
+            raise HTTPException(403, "HOD not found")
+        hod_dept_id = hod.dept_id
+        if not hod_dept_id:
+            raise HTTPException(403, "HOD has no department assigned")
+        if scope == "my":
+            return [uid], ""
+        # Department scope
+        dept = db.query(Department).filter(Department.dept_id == hod_dept_id).first()
+        school_name = dept.school.school_name if dept and dept.school else ""
+        fac_ids = [f.faculty_id for f in db.query(Faculty.faculty_id)
+                   .filter(Faculty.dept_id == hod_dept_id).all()]
+        return fac_ids, school_name
 
-    dean_school_id = dean.school_id
-    if not dean_school_id:
-        raise HTTPException(403, "Dean has no school assigned. Contact admin.")
+    # --- DEAN ---
+    if role == "dean_rd":
+        dean = db.query(Faculty).filter(Faculty.faculty_id == uid).first()
+        if not dean:
+            raise HTTPException(403, "Dean not found")
+        dean_school_id = dean.school_id
+        if not dean_school_id:
+            raise HTTPException(403, "Dean has no school assigned. Contact admin.")
+        if scope == "my":
+            return [uid], ""
+        # School scope
+        school = db.query(School).filter(School.school_id == dean_school_id).first()
+        school_name = school.school_name if school else ""
+        dept_ids_in_school = [d.dept_id for d in db.query(Department.dept_id)
+                              .filter(Department.school_id == dean_school_id).all()]
+        query = db.query(Faculty.faculty_id).filter(or_(
+            Faculty.dept_id.in_(dept_ids_in_school),
+            Faculty.school_id == dean_school_id,
+        ))
+        if dept_id:
+            query = query.filter(Faculty.dept_id == dept_id)
+        fac_ids = [f.faculty_id for f in query.all()]
+        return fac_ids, school_name
 
-    if scope == "my":
-        return [dean_id], ""
+    # --- ADMIN ---
+    if role == "admin":
+        if scope == "my":
+            return [uid], ""
+        if scope == "faculty":
+            if dept_id:
+                facs = [f.faculty_id for f in db.query(Faculty.faculty_id)
+                        .filter(Faculty.dept_id == dept_id).all()]
+                return facs, ""
+            return [], ""  # requires faculty_id param
+        if scope == "department":
+            if dept_id:
+                facs = [f.faculty_id for f in db.query(Faculty.faculty_id)
+                        .filter(Faculty.dept_id == dept_id).all()]
+                dept = db.query(Department).filter(Department.dept_id == dept_id).first()
+                sn = dept.school.school_name if dept and dept.school else ""
+                return facs, sn
+            return [], ""
+        if scope == "school":
+            if dept_id:
+                sch_id = db.query(Department.school_id).filter(Department.dept_id == dept_id).scalar()
+                if not sch_id:
+                    return [], ""
+            else:
+                sch_id = None
+            q = db.query(Faculty.faculty_id)
+            if sch_id:
+                dept_ids_in = [d.dept_id for d in db.query(Department.dept_id)
+                               .filter(Department.school_id == sch_id).all()]
+                q = q.filter(or_(Faculty.dept_id.in_(dept_ids_in), Faculty.school_id == sch_id))
+            return [f.faculty_id for f in q.all()], ""
+        # All scope — no filter
+        return [], ""
 
-    # School scope — get all faculty in the Dean's school
-    school = db.query(School).filter(School.school_id == dean_school_id).first()
-    school_name = school.school_name if school else ""
-
-    # Get department IDs in this school
-    dept_ids = [d.dept_id for d in db.query(Department.dept_id)
-                .filter(Department.school_id == dean_school_id).all()]
-
-    # Get all faculty in those departments OR with same school_id
-    fac_ids = [f.faculty_id for f in db.query(Faculty.faculty_id)
-               .filter(or_(
-                   Faculty.dept_id.in_(dept_ids),
-                   Faculty.school_id == dean_school_id,
-               )).all()]
-
-    return fac_ids, school_name
+    return [uid], ""
 
 
 class PublicationCreate(BaseModel):
@@ -193,14 +258,20 @@ def get_publications(
 ):
     query = db.query(Publication).join(Faculty)
 
-    # Apply scope
-    if current["role"] == "dean_rd":
-        fac_ids, _ = _resolve_scope(db, current, scope)
+    # Apply role-based scope
+    fac_ids, _ = _resolve_scope(db, current, scope, dept_id)
+    if fac_ids:
         query = query.filter(Publication.faculty_id.in_(fac_ids))
-    else:
-        query = query.filter(Publication.faculty_id == current["faculty_id"])
-        if faculty_id:
-            query = query.filter(Publication.faculty_id == faculty_id)
+    # Admin "all" scope returns empty fac_ids (no filter)
+    if current["role"] == "admin" and scope == "faculty" and faculty_id:
+        query = query.filter(Publication.faculty_id == faculty_id)
+    if current["role"] == "admin" and scope == "school" and school_id:
+        dept_ids_in = [d.dept_id for d in db.query(Department.dept_id)
+                       .filter(Department.school_id == school_id).all()]
+        query = query.filter(or_(
+            Faculty.dept_id.in_(dept_ids_in),
+            Faculty.school_id == school_id,
+        ))
 
     if search:
         q = f"%{search}%"
@@ -251,6 +322,53 @@ def get_publications(
     }
 
 
+@router.get("/pub/schools")
+def get_pub_schools(db: Session = Depends(get_db), current=Depends(get_current_faculty)):
+    """Return all schools. Admin sees all; dean sees own; HOD sees own."""
+    role = current["role"]
+    if role == "admin":
+        schools = db.query(School).order_by(School.school_name).all()
+        return [{"school_id": s.school_id, "school_name": s.school_name} for s in schools]
+    if role in ("dean_rd", "hod"):
+        fac = db.query(Faculty).filter(Faculty.faculty_id == current["faculty_id"]).first()
+        if fac and fac.school_id:
+            s = db.query(School).filter(School.school_id == fac.school_id).first()
+            if s:
+                return [{"school_id": s.school_id, "school_name": s.school_name}]
+    schools = db.query(School).order_by(School.school_name).all()
+    return [{"school_id": s.school_id, "school_name": s.school_name} for s in schools]
+
+
+@router.get("/pub-depts")
+def get_departments_for_school(
+    school_id: int = None,
+    db: Session = Depends(get_db),
+    current=Depends(get_current_faculty),
+):
+    """Return departments for a given school. If no school_id, returns all departments (limited to own school for dean/hod)."""
+    role = current["role"]
+    if school_id and role in ["dean_rd", "hod"]:
+        dean = db.query(Faculty).filter(Faculty.faculty_id == current["faculty_id"]).first()
+        if dean and dean.school_id != school_id:
+            return []
+    if not school_id:
+        if role == "dean_rd":
+            dean = db.query(Faculty).filter(Faculty.faculty_id == current["faculty_id"]).first()
+            sid = dean.school_id if dean else None
+            if not sid: return []
+            depts = db.query(Department).filter(Department.school_id == sid).order_by(Department.dept_name).all()
+        elif role == "hod":
+            fac = db.query(Faculty).filter(Faculty.faculty_id == current["faculty_id"]).first()
+            sid = fac.school_id if fac else None
+            if not sid: return []
+            depts = db.query(Department).filter(Department.school_id == sid).order_by(Department.dept_name).all()
+        else:
+            depts = db.query(Department).order_by(Department.dept_name).all()
+    else:
+        depts = db.query(Department).filter(Department.school_id == school_id).order_by(Department.dept_name).all()
+    return [{"dept_id": d.dept_id, "dept_code": d.dept_code, "dept_name": d.dept_name, "school_id": d.school_id} for d in depts]
+
+
 @router.get("/{pub_id}")
 def get_publication(pub_id: int, db: Session = Depends(get_db),
                     current=Depends(get_current_faculty)):
@@ -258,11 +376,18 @@ def get_publication(pub_id: int, db: Session = Depends(get_db),
     if not pub:
         raise HTTPException(status_code=404, detail="Publication not found")
 
-    # Enforce access: non-dean can only see own pubs; dean sees within school
-    if current["role"] == "dean_rd":
+    # Enforce role-based access
+    role = current["role"]
+    if role == "admin":
+        pass  # admin sees all
+    elif role == "dean_rd":
         fac_ids, _ = _resolve_scope(db, current, "school")
         if pub.faculty_id not in fac_ids:
-            raise HTTPException(403, "Access denied")
+            raise HTTPException(403, "Access denied — not in your school")
+    elif role == "hod":
+        fac_ids, _ = _resolve_scope(db, current, "department")
+        if pub.faculty_id not in fac_ids:
+            raise HTTPException(403, "Access denied — not in your department")
     elif pub.faculty_id != current["faculty_id"]:
         raise HTTPException(403, "Access denied")
 
@@ -287,15 +412,45 @@ def get_publication(pub_id: int, db: Session = Depends(get_db),
 
     result = _pub_to_dict(pub, include_faculty=True)
 
+    result["total_citations"] = pub.citations_count or 0
+
     from app.models import CitationYearly
-    citations_by_year = db.query(CitationYearly).filter(
+    fac_yearly = db.query(CitationYearly).filter(
         CitationYearly.faculty_id == pub.faculty_id
     ).order_by(CitationYearly.year).all()
-    result["citations_by_year"] = [
-        {"year": c.year, "count": c.citations_count} for c in citations_by_year
-    ]
+    if fac_yearly and (pub.citations_count or 0) > 0:
+        total_fac_cit = sum(c.citations_count for c in fac_yearly)
+        result["citations_by_year"] = [
+            {"year": c.year, "count": round((pub.citations_count or 0) * c.citations_count / total_fac_cit)}
+            for c in fac_yearly
+        ]
+    else:
+        result["citations_by_year"] = []
+
+    # Build description from available data when abstract is empty
+    desc_parts = []
+    if not pub.abstract:
+        if pub.ml_topic:
+            desc_parts.append(f"This research focuses on {pub.ml_topic}.")
+        if pub.research_area:
+            desc_parts.append(f"It falls under the research area of {pub.research_area}.")
+        if pub.keywords:
+            kw_list = [k.strip() for k in pub.keywords.split(",") if k.strip()]
+            if kw_list:
+                desc_parts.append(f"Key topics include {', '.join(kw_list[:6])}.")
+        venue = pub.conference_name or pub.journal_name or ""
+        if venue and venue != "Unknown Journal":
+            desc_parts.append(f"Published in {venue} ({pub.year}).")
+        elif pub.year:
+            desc_parts.append(f"Published in {pub.year}.")
+        if desc_parts:
+            result["description"] = " ".join(desc_parts)
+        else:
+            result["description"] = result["title"]
+    else:
+        result["description"] = pub.abstract
+
     result["similar_publications"] = [_pub_to_dict(s) for s in similar]
-    result["total_citations"] = sum(c.citations_count for c in citations_by_year)
 
     return result
 
@@ -303,16 +458,23 @@ def get_publication(pub_id: int, db: Session = Depends(get_db),
 @router.get("/stats/counts")
 def get_publication_counts(
     scope: str = "my",
+    dept_id: Optional[int] = None,
+    school_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current=Depends(get_current_faculty),
 ):
-    query = db.query(Publication)
+    query = db.query(Publication).join(Faculty)
 
-    if current["role"] == "dean_rd":
-        fac_ids, _ = _resolve_scope(db, current, scope)
+    fac_ids, _ = _resolve_scope(db, current, scope, dept_id)
+    if fac_ids:
         query = query.filter(Publication.faculty_id.in_(fac_ids))
-    else:
-        query = query.filter(Publication.faculty_id == current["faculty_id"])
+    if current["role"] == "admin" and scope == "school" and school_id:
+        dept_ids_in = [d.dept_id for d in db.query(Department.dept_id)
+                       .filter(Department.school_id == school_id).all()]
+        query = query.filter(or_(
+            Faculty.dept_id.in_(dept_ids_in),
+            Faculty.school_id == school_id,
+        ))
 
     total = query.count()
     journal = query.filter(Publication.publication_type == "Journal").count()

@@ -310,6 +310,10 @@ CONFERENCE_INDICATORS = [
     "icb", "btas", "icmla", "icit", "icacci", "iccct", "icccnt",
     "icacc", "icissp", "iciss", "icic", "icnc", "aita", "icact",
     "icc", "globecom", "infocom", "icon", "icn", "icdcn",
+    "int. conf.", "international conference", "intl conf",
+    "ieee conference", "springer conference", "elsevier conference",
+    "acm conference", "int. symposium", "international symposium",
+    "springer berlin", "crc press", "aip conference",
 ]
 JOURNAL_INDICATORS = [
     "journal", "ieee access", "nature", "elsevier", "springer",
@@ -321,15 +325,22 @@ JOURNAL_INDICATORS = [
     "remotesensing", "sustainability", "polymers",
 ]
 
-
 def classify_publication_type(title: str, journal_name: str) -> str:
+    venue = (journal_name or "").lower().strip()
     combined = f"{title} {journal_name}".lower()
+    for ind in CONFERENCE_INDICATORS:
+        if ind in venue:
+            return "Conference"
+    for ind in JOURNAL_INDICATORS:
+        if ind in venue:
+            return "Journal"
     for ind in CONFERENCE_INDICATORS:
         if ind in combined:
             return "Conference"
     for ind in JOURNAL_INDICATORS:
         if ind in combined:
             return "Journal"
+    return "Journal"
     return "Journal"
 
 

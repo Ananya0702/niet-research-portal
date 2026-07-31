@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import API from "../services/api";
 import * as XLSX from "xlsx";
 
@@ -9,10 +9,11 @@ const SIDEBAR_ACTIVE = "rgba(91,61,245,0.15)";
 
 const SIDEBAR_ITEMS = [
   { section: "Navigation", items: [
-    { key: "overview", icon: "📊", label: "Dashboard Overview" },
-    { key: "schools",  icon: "🏛", label: "Schools" },
-    { key: "depts",    icon: "🏫", label: "Departments" },
-    { key: "faculty",  icon: "👥", label: "Faculty" },
+    { key: "overview",    icon: "📊", label: "Dashboard Overview" },
+    { key: "schools",     icon: "🏛", label: "Schools" },
+    { key: "depts",       icon: "🏫", label: "Departments" },
+    { key: "faculty",     icon: "👥", label: "Faculty" },
+    { key: "faculty-details", icon: "📋", label: "Faculty Details" },
   ]},
   { section: "Management", items: [
     { key: "add-school", icon: "➕", label: "Add School" },
@@ -24,7 +25,7 @@ const SIDEBAR_ITEMS = [
   ]},
 ];
 
-const DESIGNATIONS = ["Professor","Associate Professor","Assistant Professor","Senior Lecturer","Lecturer","Dean R&D","HOD",];
+const DESIGNATIONS = ["Professor","Associate Professor","Assistant Professor","Senior Lecturer","Lecturer","Dean","HOD",];
 const ROLES = ["faculty","hod","dean_rd"];
 const EMPTY_FORM = { name:"", email:"", password:"", role:"faculty", designation:"Assistant Professor", dept_id:"", is_phd:false, joining_year:new Date().getFullYear(), google_scholar_id:"", };
 
@@ -64,12 +65,27 @@ export default function AdminPanel() {
   const [selectedFacultyData, setSelectedFacultyData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  const authHeaders = () => ({ headers: { Authorization: `Bearer ${adminToken}` } });
+  const [facultyDetails, setFacultyDetails] = useState([]);
+  const [facultyDetailsLoading, setFacultyDetailsLoading] = useState(false);
+  const [fdSearch, setFdSearch] = useState("");
+  const [fdRoleFilter, setFdRoleFilter] = useState("all");
+  const [fdDeptFilter, setFdDeptFilter] = useState("all");
+  const [expandedFac, setExpandedFac] = useState({});
+  const [fdViewing, setFdViewing] = useState(null);
+
+  const authHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("admin_token")}` } });
   const showMsg = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
   const apiPost = (url, data) => API.post(url, data, authHeaders());
   const apiPut = (url, data) => API.put(url, data, authHeaders());
   const apiGet = (url) => API.get(url, authHeaders());
   const apiDel = (url) => API.delete(url, authHeaders());
+
+  const fetchFacultyDetails = async () => {
+    setFacultyDetailsLoading(true);
+    try { const r=await apiGet("/admin/faculty-details"); setFacultyDetails(r.data); }
+    catch(e) { showMsg("error","Failed to load faculty details"); }
+    finally { setFacultyDetailsLoading(false); }
+  };
 
   // ── Login ──
   const handleAdminLogin = async (e) => {
@@ -79,15 +95,15 @@ export default function AdminPanel() {
   };
 
   // ── Data fetching ──
-  const fetchFaculty = async () => { setLoading(true); try { const r=await apiGet("/admin/faculty"); setFaculty(r.data); } catch { setAdminToken(""); localStorage.removeItem("admin_token"); } finally { setLoading(false); } };
+  const fetchFaculty = async () => { setLoading(true); try { const r=await apiGet("/admin/faculty"); setFaculty(r.data); } catch(e) { console.error("fetchFaculty error:", e); } finally { setLoading(false); } };
   const fetchDashboard = async () => { try { const r=await apiGet("/admin/dashboard"); setDashboard(r.data); } catch { /* ignore */ } };
   const fetchSchools = async () => { try { const r=await apiGet("/admin/schools"); setSchools(r.data); } catch { /* ignore */ } };
   const fetchDepts = async () => { try { const r=await apiGet("/admin/departments"); setDepts(r.data); } catch { /* ignore */ } };
-  useEffect(() => { if (!adminToken) return; fetchFaculty(); fetchDashboard(); fetchSchools(); fetchDepts(); }, [adminToken]); // eslint-disable-line
+  useEffect(() => { if (!adminToken) return; fetchFaculty(); fetchDashboard(); fetchSchools(); fetchDepts(); fetchFacultyDetails(); }, [adminToken]); // eslint-disable-line
 
   // ── Faculty CRUD ──
   const handleCreate = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/faculty", { ...form, dept_id:form.dept_id?parseInt(form.dept_id):null, joining_year:parseInt(form.joining_year), }); showMsg("success", `✅ ${form.name} created`); setModal(false); setForm(EMPTY_FORM); fetchFaculty(); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
-  const handleUpdate = async (e) => { e.preventDefault(); setSaving(true); try { await apiPut(`/admin/faculty/${editForm.faculty_id}`, editForm); showMsg("success","✅ Updated"); setEditModal(false); fetchFaculty(); } catch { showMsg("error","Update failed"); } finally { setSaving(false); } };
+  const handleUpdate = async (e) => { e.preventDefault(); setSaving(true); try { const {faculty_id, school_id, dept_id, role, ...rest} = editForm; if (!school_id) { showMsg("error","School is required"); setSaving(false); return; } if (role !== "dean_rd" && !dept_id) { showMsg("error","Department is required for HOD and Faculty"); setSaving(false); return; } await apiPut(`/admin/faculty/${editForm.faculty_id}`, editForm); showMsg("success","✅ Updated"); setEditModal(false); fetchFaculty(); } catch { showMsg("error","Update failed"); } finally { setSaving(false); } };
   const handleDeactivate = async (id,name) => { if (!window.confirm(`Deactivate ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}`); showMsg("success",`${name} deactivated`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const handleDelete = async (id,name) => { if (!window.confirm(`Permanently delete ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}?hard=true`); showMsg("success",`${name} deleted`); fetchFaculty(); } catch { showMsg("error","Error"); } };
 
@@ -112,6 +128,14 @@ export default function AdminPanel() {
   const selSchoolFaculty = selSchool ? faculty.filter(f=>selSchoolDepts.some(d=>d.dept_id===f.dept_id)) : [];
 
   const viewFacultyProfile = async (facultyId) => {
+    if (facultyDetails && facultyDetails.length) {
+      const found = facultyDetails.find(f => f.faculty_id === facultyId);
+      if (found) {
+        setFdViewing(found);
+        setActiveView("faculty-details");
+        return;
+      }
+    }
     setSelectedFacultyId(facultyId);
     setShowFacultyProfile(true);
     setProfileLoading(true);
@@ -229,7 +253,7 @@ export default function AdminPanel() {
 
           {/* ═══ OVERVIEW ═══ */}
           {activeView==="overview" && !dashboard && <div className="spinner" style={{margin:"40px auto"}} />}
-          {activeView==="overview" && dashboard && <OverviewView {...{dashboard,schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,selSchool,selSchoolDepts,selSchoolFaculty,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,activeTab,setActiveTab,loading,filteredFaculty,roleFilter,setRoleFilter,deptFilter,setDeptFilter,setModal,handleDeactivate,handleDelete,P,showMsg,viewFacultyProfile}} />}
+          {activeView==="overview" && dashboard && <OverviewView {...{dashboard,schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,setModal,handleDeactivate,handleDelete,P,viewFacultyProfile}} />}
 
           {/* ═══ SCHOOLS ═══ */}
           {activeView==="schools" && <SchoolsView {...{schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,P}} />}
@@ -239,6 +263,9 @@ export default function AdminPanel() {
 
           {/* ═══ FACULTY ═══ */}
           {activeView==="faculty" && <FacultyView {...{faculty,loading,filteredFaculty,roleFilter,setRoleFilter,deptFilter,setDeptFilter,depts,setModal,setEditModal,setEditForm,handleDeactivate,handleDelete,P,viewFacultyProfile}} />}
+
+          {/* ═══ FACULTY DETAILS ═══ */}
+          {activeView==="faculty-details" && <FacultyDetailsView {...{facultyDetails,facultyDetailsLoading,fdSearch,setFdSearch,fdRoleFilter,setFdRoleFilter,fdDeptFilter,setFdDeptFilter,depts,expandedFac,setExpandedFac,P,fdViewing,setFdViewing}} />}
 
           {/* ═══ EXPORT ═══ */}
           {activeView==="export" && <ExportView {...{faculty,schools,depts,P,showMsg,setActiveView}} />}
@@ -338,7 +365,7 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
           </div>
           <div style={{ marginBottom:14 }}><label style={lbl}>Password *</label><input type="password" required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} style={inp} placeholder="Min 6 characters" /></div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-            <div><label style={lbl}>Role *</label><select required value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={inp}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean R&D":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
+            <div><label style={lbl}>Role *</label><select required value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={inp}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
             <div><label style={lbl}>Designation *</label><select required value={form.designation} onChange={e=>setForm({...form,designation:e.target.value})} style={inp}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></div>
           </div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
@@ -361,6 +388,21 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
 }
 
 function EditModal({ editForm,setEditForm,saving,handleUpdate,setEditModal,depts,schools }) {
+  const isFaculty = editForm.name !== undefined;
+  const role = editForm.role || "faculty";
+  const showDept = role === "hod" || role === "faculty";
+  const [selEditSchool, setSelEditSchool] = useState(editForm.school_id || "");
+
+  const editSchoolDepts = useMemo(() => {
+    if (!selEditSchool) return schools?.find(s => s.school_id === (editForm.school_id || parseInt(selEditSchool)))?.departments || [];
+    const school = schools?.find(s => s.school_id === parseInt(selEditSchool));
+    return school?.departments || [];
+  }, [selEditSchool, schools, editForm.school_id]);
+
+  useEffect(() => {
+    if (editForm.school_id) setSelEditSchool(editForm.school_id);
+  }, [editForm.school_id]);
+
   return (
     <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100 }}>
       <div style={{ background:"#fff",borderRadius:14,padding:"24px 28px",width:480 }}>
@@ -369,14 +411,17 @@ function EditModal({ editForm,setEditForm,saving,handleUpdate,setEditModal,depts
           <span style={{ cursor:"pointer",color:"#888",fontSize:22 }} onClick={()=>setEditModal(false)}>×</span>
         </div>
         <form onSubmit={handleUpdate}>
-          {editForm.name!==undefined ? (
+          {isFaculty ? (
             <>
               <div style={{ marginBottom:14 }}><label style={lbl}>Full Name</label><input value={editForm.name||""} onChange={e=>setEditForm({...editForm,name:e.target.value})} style={inp} /></div>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-                <div><label style={lbl}>Role</label><select value={editForm.role||"faculty"} onChange={e=>setEditForm({...editForm,role:e.target.value})} style={inp}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean R&D":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
+                <div><label style={lbl}>Role</label><select value={role} onChange={e=>{const r=e.target.value;setEditForm({...editForm,role:r,dept_id:r==="dean_rd"?null:editForm.dept_id});}} style={inp}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
                 <div><label style={lbl}>Designation</label><select value={editForm.designation||""} onChange={e=>setEditForm({...editForm,designation:e.target.value})} style={inp}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></div>
               </div>
-              <div style={{ marginBottom:14 }}><label style={lbl}>Department</label><select value={editForm.dept_id||""} onChange={e=>setEditForm({...editForm,dept_id:e.target.value?parseInt(e.target.value):null})} style={inp}><option value="">No Department</option>{depts.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}</select></div>
+              <div style={{ marginBottom:14 }}><label style={lbl}>School</label><select value={selEditSchool} onChange={e=>{const sid=e.target.value;setSelEditSchool(sid);setEditForm({...editForm,school_id:sid?parseInt(sid):null,dept_id:null});}} style={inp}><option value="">Select School</option>{(schools||[]).map(s=><option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}</select></div>
+              {showDept && (
+                <div style={{ marginBottom:14 }}><label style={lbl}>Department</label><select value={editForm.dept_id||""} onChange={e=>setEditForm({...editForm,dept_id:e.target.value?parseInt(e.target.value):null})} style={inp}><option value="">{selEditSchool?"Select Department":"Select School first"}</option>{editSchoolDepts.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}</select></div>
+              )}
               <div style={{ marginBottom:14 }}><label style={lbl}>Google Scholar ID</label><input value={editForm.google_scholar_id||""} onChange={e=>setEditForm({...editForm,google_scholar_id:e.target.value})} style={inp} placeholder="e.g. 8XXy5vkAAAAJ" /></div>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
                 <div><label style={lbl}>PhD Holder</label><select value={editForm.is_phd?"true":"false"} onChange={e=>setEditForm({...editForm,is_phd:e.target.value==="true"})} style={inp}><option value="false">No</option><option value="true">Yes</option></select></div>
@@ -813,7 +858,57 @@ function FacultyProfileView({ data, loading, onClose, P }) {
 
 // ═══ VIEW COMPONENTS ═══
 
-function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, setExpandedSchools, selSchoolId, setSelSchoolId, selSchool, selSchoolDepts, selSchoolFaculty, setSchoolModal, setDeptModal, handleDeleteSchool, handleDeleteDept, setEditModal, setEditForm, activeTab, setActiveTab, loading, filteredFaculty, roleFilter, setRoleFilter, deptFilter, setDeptFilter, setModal, handleDeactivate, handleDelete, P, viewFacultyProfile }) {
+function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, setExpandedSchools, selSchoolId, setSelSchoolId, setSchoolModal, setDeptModal, handleDeleteSchool, handleDeleteDept, setEditModal, setEditForm, setModal, handleDeactivate, handleDelete, P, viewFacultyProfile }) {
+  const [selDeptId, setSelDeptId] = useState(null);
+  const [expandedDepts, setExpandedDepts] = useState({});
+  const [treeSearch, setTreeSearch] = useState("");
+  const [menuOpen, setMenuOpen] = useState(null);
+
+  const selSchool = schools.find(s=>s.school_id===selSchoolId)||null;
+  const selDept = selDeptId ? depts.find(d=>d.dept_id===selDeptId)||null : null;
+  const selSchoolDepts = selSchool ? depts.filter(d=>d.school_id===selSchool.school_id) : [];
+  const selSchoolFaculty = selSchool ? faculty.filter(f=>selSchoolDepts.some(d=>d.dept_id===f.dept_id)) : [];
+  const selDeptFaculty = selDept ? faculty.filter(f=>f.dept_id===selDept.dept_id) : [];
+
+  const q = treeSearch.toLowerCase().trim();
+  const matchingIds = useMemo(() => {
+    if (!q) return null;
+    const m = { schools: new Set(), depts: new Set(), faculty: new Set() };
+    schools.forEach(s => { if (s.school_name.toLowerCase().includes(q)) m.schools.add(s.school_id); });
+    depts.forEach(d => { if (d.dept_name.toLowerCase().includes(q)||d.dept_code.toLowerCase().includes(q)) m.depts.add(d.dept_id); });
+    faculty.forEach(f => { if (f.name.toLowerCase().includes(q)) m.faculty.add(f.faculty_id); });
+    return m;
+  }, [q, schools, depts, faculty]);
+
+  const schoolMatches = (s) => !matchingIds || matchingIds.schools.has(s.school_id) || sDepts(s).some(d=>deptMatches(d));
+  const deptMatches = (d) => !matchingIds || matchingIds.depts.has(d.dept_id) || dFac(d).some(f=>facMatches(f));
+  const facMatches = (f) => !matchingIds || matchingIds.faculty.has(f.faculty_id);
+  const sDepts = (s) => depts.filter(d=>d.school_id===s.school_id);
+  const dFac = (d) => faculty.filter(f=>f.dept_id===d.dept_id);
+  const sFac = (s) => faculty.filter(f=>sDepts(s).some(d=>d.dept_id===f.dept_id));
+
+  const autoExpanded = useMemo(() => {
+    if (!q) return {};
+    const e = {};
+    schools.forEach(s => {
+      if (matchingIds?.schools.has(s.school_id) || sDepts(s).some(d=>matchingIds?.depts.has(d.dept_id))) e[s.school_id] = true;
+    });
+    return e;
+  }, [q]);
+
+  const effectiveExpanded = {...expandedSchools, ...autoExpanded};
+
+  const closeMenu = () => setMenuOpen(null);
+
+  const FacBadge = ({ role, size=10 }) => (
+    <span style={{ fontSize:size, padding:"1px 6px", borderRadius:4, fontWeight:500,
+      background:role==="dean_rd"?"#E1F5EE":role==="hod"?"#E6F1FB":"#EEEDFE",
+      color:role==="dean_rd"?"#085041":role==="hod"?"#0C447C":P,
+    }}>{role==="dean_rd"?"Dean":role==="hod"?"HOD":"Faculty"}</span>
+  );
+
+  const roleIcon = (role) => role==="dean_rd"?"👨‍🏫":role==="hod"?"👨‍🏫":"👨‍🏫";
+
   return (
     <div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:12, marginBottom:18 }}>
@@ -838,59 +933,195 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
         ))}
       </div>
 
-      <div style={{ display:"flex", gap:14, marginBottom:18 }}>
-        <div style={{ width:320, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16, flexShrink:0 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <span style={{ fontSize:13, fontWeight:600, color:"#1a1a1a" }}>Organization Structure</span>
+      <div style={{ display:"flex", gap:14 }}>
+        <div style={{ width:340, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16, flexShrink:0, display:"flex", flexDirection:"column" }}>
+          <div style={{ position:"relative", marginBottom:10 }}>
+            <input value={treeSearch} onChange={e=>setTreeSearch(e.target.value)} placeholder="🔍 Search schools, departments, faculty..." style={{ width:"100%", padding:"8px 10px 8px 30px", border:"1px solid #e0e0e8", borderRadius:8, fontSize:12, outline:"none", background:"#f8f8fb", boxSizing:"border-box" }} />
+            <span style={{ position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#aaa" }}>🔍</span>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+            <span style={{ fontSize:12, fontWeight:600, color:"#1a1a1a" }}>Organization Explorer</span>
             <span onClick={()=>setSchoolModal(true)} style={{ fontSize:11, color:P, cursor:"pointer", fontWeight:500 }}>+ Add School</span>
           </div>
-          <div style={{ fontSize:12, fontWeight:500, color:P, marginBottom:8 }}>🏛 University</div>
-          <div style={{ borderLeft:"2px solid #e8e8ee", marginLeft:8, paddingLeft:12 }}>
-            {schools.map(s=>{
-              const isExpanded = expandedSchools[s.school_id];
-              const sDepts = depts.filter(d=>d.school_id===s.school_id);
-              return (
-                <div key={s.school_id} style={{ marginBottom:6 }}>
-                  <div onClick={()=>{setSelSchoolId(s.school_id);setExpandedSchools({...expandedSchools,[s.school_id]:!isExpanded});}} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 8px", borderRadius:6, cursor:"pointer", background:selSchoolId===s.school_id?"#EEEDFE":"transparent", fontSize:12 }}>
-                    <span style={{ fontSize:10, color:"#aaa" }}>{isExpanded?"▾":"▸"}</span>
-                    <span>🏛</span>
-                    <span style={{ fontWeight:selSchoolId===s.school_id?600:400, color:selSchoolId===s.school_id?P:"#333" }}>{s.school_name}</span>
-                    <span style={{ fontSize:10, color:"#888", marginLeft:"auto" }}>{sDepts.length}</span>
+          <div style={{ flex:1, overflowY:"auto", maxHeight:"calc(100vh - 320px)" }}>
+            <div style={{ fontSize:12, fontWeight:500, color:P, marginBottom:6, padding:"4px 0" }}>🏛 University</div>
+            <div style={{ borderLeft:"2px solid #e8e8ee", marginLeft:8, paddingLeft:10 }}>
+              {schools.filter(s=>schoolMatches(s)).map(s=>{
+                const isExp = effectiveExpanded[s.school_id];
+                const deptsHere = sDepts(s);
+                const facHere = sFac(s);
+                return (
+                  <div key={s.school_id} style={{ marginBottom:4 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 6px", borderRadius:5, cursor:"pointer", background:selSchoolId===s.school_id&&!selDeptId?"#EEEDFE":"transparent", fontSize:11, position:"relative" }}
+                      onClick={()=>{setSelSchoolId(s.school_id);setSelDeptId(null);setExpandedSchools({...expandedSchools,[s.school_id]:!expandedSchools[s.school_id]});}}>
+                      <span style={{ fontSize:9, color:"#aaa", width:10 }}>{isExp?"▾":"▸"}</span>
+                      <span>🏛</span>
+                      <span style={{ fontWeight:selSchoolId===s.school_id&&!selDeptId?600:400, color:selSchoolId===s.school_id&&!selDeptId?P:"#333", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.school_name}</span>
+                      <span style={{ fontSize:9, color:"#888", whiteSpace:"nowrap" }}>{deptsHere.length}d · {facHere.length}f</span>
+                      <span onClick={e=>{e.stopPropagation();setMenuOpen(menuOpen===('s_'+s.school_id)?null:'s_'+s.school_id);}} style={{ fontSize:14, color:"#999", cursor:"pointer", padding:"0 2px", lineHeight:1 }}>⋮</span>
+                      {menuOpen===('s_'+s.school_id) && (
+                        <div style={{ position:"absolute", left:0, top:"100%", background:"#fff", borderRadius:8, boxShadow:"0 4px 20px rgba(0,0,0,0.12)", border:"1px solid #eee", zIndex:50, minWidth:150, padding:"4px 0" }}
+                          onMouseLeave={closeMenu}>
+                          {["Add Department","Edit School","Delete School"].map((act,i)=>{
+                            const acts = [
+                              ()=>{closeMenu();setSelSchoolId(s.school_id);setSelDeptId(null);setDeptModal(true);},
+                              ()=>{closeMenu();setEditForm({school_id:s.school_id,school_name:s.school_name});setEditModal(true);},
+                              ()=>{closeMenu();handleDeleteSchool(s.school_id,s.school_name);},
+                            ];
+                            return <div key={act} onClick={acts[i]} style={{ padding:"7px 14px", fontSize:11, cursor:"pointer", color:"#333", display:"flex", alignItems:"center", gap:6 }}>{act}</div>;
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    {isExp && deptsHere.filter(d=>deptMatches(d)).map(d=>{
+                      const dFacHere = dFac(d);
+                      const isDeptExp = expandedDepts[d.dept_id];
+                      return (
+                        <div key={d.dept_id}>
+                          <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 6px 4px 18px", fontSize:11, cursor:"pointer", borderRadius:4, background:selDeptId===d.dept_id?"#EEEDFE":"transparent", color:selDeptId===d.dept_id?P:"#555", position:"relative" }}
+                            onClick={()=>{setSelDeptId(d.dept_id);setSelSchoolId(s.school_id);setExpandedDepts({...expandedDepts,[d.dept_id]:!expandedDepts[d.dept_id]});}}>
+                            <span style={{ fontSize:9, color:"#aaa", width:10 }}>{isDeptExp?"▾":"▸"}</span>
+                            <span>📁</span>
+                            <span style={{ fontWeight:selDeptId===d.dept_id?500:400, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{d.dept_code} - {d.dept_name}</span>
+                            <span style={{ fontSize:9, color:"#888" }}>{dFacHere.length}f</span>
+                            <span onClick={e=>{e.stopPropagation();setMenuOpen(menuOpen===('d_'+d.dept_id)?null:'d_'+d.dept_id);}} style={{ fontSize:14, color:"#999", cursor:"pointer", padding:"0 2px", lineHeight:1 }}>⋮</span>
+                            {menuOpen===('d_'+d.dept_id) && (
+                              <div style={{ position:"absolute", left:0, top:"100%", background:"#fff", borderRadius:8, boxShadow:"0 4px 20px rgba(0,0,0,0.12)", border:"1px solid #eee", zIndex:50, minWidth:150, padding:"4px 0" }}
+                                onMouseLeave={closeMenu}>
+                                {["View Department","Edit Department","Delete Department","Assign HOD"].map((act,i)=>{
+                                  const acts = [
+                                    ()=>{closeMenu();setSelDeptId(d.dept_id);setSelSchoolId(s.school_id);},
+                                    ()=>{closeMenu();setSelDeptId(d.dept_id);setSelSchoolId(s.school_id);const hodOpts=faculty.filter(f=>f.role==="hod"||f.role==="faculty");setEditForm({dept_id:d.dept_id,dept_code:d.dept_code,dept_name:d.dept_name,school_id:d.school_id,hod_faculty_id:d.hod_faculty_id||"",faculty_list:hodOpts});setEditModal(true);},
+                                    ()=>{closeMenu();handleDeleteDept(d.dept_id,d.dept_name);},
+                                    ()=>{closeMenu();setSelDeptId(d.dept_id);setSelSchoolId(s.school_id);const hodOpts=faculty.filter(f=>f.role==="hod"||f.role==="faculty");setEditForm({dept_id:d.dept_id,dept_code:d.dept_code,dept_name:d.dept_name,school_id:d.school_id,hod_faculty_id:d.hod_faculty_id||"",faculty_list:hodOpts});setEditModal(true);},
+                                  ];
+                                  return <div key={act} onClick={acts[i]} style={{ padding:"7px 14px", fontSize:11, cursor:"pointer", color:"#333" }}>{act}</div>;
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          {isDeptExp && dFacHere.filter(f=>f.role==="hod"&&facMatches(f)).map(f=>(
+                            <div key={f.faculty_id} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 6px 3px 30px", fontSize:11, cursor:"pointer", borderRadius:4, color:"#555", position:"relative" }}
+                              onClick={()=>viewFacultyProfile(f.faculty_id)}>
+                              <span>👤</span>
+                              <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</span>
+                              <FacBadge role={f.role} size={9} />
+                              <span onClick={e=>{e.stopPropagation();setMenuOpen(menuOpen===('f_'+f.faculty_id)?null:'f_'+f.faculty_id);}} style={{ fontSize:14, color:"#999", cursor:"pointer", padding:"0 2px", lineHeight:1 }}>⋮</span>
+                              {menuOpen===('f_'+f.faculty_id) && (
+                                <div style={{ position:"absolute", left:0, top:"100%", background:"#fff", borderRadius:8, boxShadow:"0 4px 20px rgba(0,0,0,0.12)", border:"1px solid #eee", zIndex:50, minWidth:150, padding:"4px 0" }}
+                                  onMouseLeave={closeMenu}>
+                                  {["View Profile","Edit","Deactivate","Delete"].map((act,i)=>{
+                                    const acts = [
+                                      ()=>{closeMenu();viewFacultyProfile(f.faculty_id);},
+                                      ()=>{closeMenu();setEditForm({...f});setEditModal(true);},
+                                      ()=>{closeMenu();handleDeactivate(f.faculty_id,f.name);},
+                                      ()=>{closeMenu();handleDelete(f.faculty_id,f.name);},
+                                    ];
+                                    return <div key={act} onClick={acts[i]} style={{ padding:"7px 14px", fontSize:11, cursor:"pointer", color:act==="Delete"?"#A32D2D":"#333" }}>{act}</div>;
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                    {isExp && deptsHere.length===0 && <div style={{ padding:"4px 6px 4px 18px", fontSize:10, color:"#aaa" }}>No departments</div>}
                   </div>
-                  {isExpanded && sDepts.map(d=>{
-                    const dFac = faculty.filter(f=>f.dept_id===d.dept_id);
-                    return (
-                      <div key={d.dept_id} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px 4px 28px", fontSize:11, color:"#666" }}>
-                        <span>📁</span>
-                        <span>{d.dept_code}</span>
-                        <span style={{ fontSize:10, color:"#aaa", marginLeft:"auto" }}>{dFac.length}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-          <button onClick={()=>setSchoolModal(true)} style={{ width:"100%", marginTop:12, padding:"8px", background:P, color:"#fff", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add School</button>
+          <button onClick={()=>setSchoolModal(true)} style={{ width:"100%", marginTop:10, padding:"7px", background:P, color:"#fff", borderRadius:8, fontSize:11, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add School</button>
         </div>
 
-        <div style={{ flex:1, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16 }}>
-          {selSchool ? (
+        <div style={{ flex:1, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16, minHeight:300 }}>
+          {selDept ? (
             <>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                 <div>
-                  <div style={{ fontSize:15, fontWeight:600, color:"#1a1a1a" }}>{selSchool.school_name}</div>
-                  <div style={{ fontSize:11, color:"#888", marginTop:2 }}>{selSchoolDepts.length} Departments · {selSchoolFaculty.length} Faculty</div>
+                  <div style={{ fontSize:15, fontWeight:600, color:"#1a1a1a" }}>📁 {selDept.dept_name}</div>
+                  <div style={{ fontSize:11, color:"#888", marginTop:2 }}>Code: {selDept.dept_code} · {selDeptFaculty.length} Faculty</div>
                 </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={()=>setDeptModal(true)} style={{ background:P, color:"#fff", padding:"8px 18px", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add Department</button>
-                  <button onClick={()=>handleDeleteSchool(selSchool.school_id,selSchool.school_name)} style={{ background:"#FCEBEB", color:"#A32D2D", padding:"8px 14px", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>🗑</button>
+                <div style={{ display:"flex", gap:6 }}>
+                  <button onClick={()=>{const hodOpts=faculty.filter(f=>f.role==="hod"||f.role==="faculty");setEditForm({dept_id:selDept.dept_id,dept_code:selDept.dept_code,dept_name:selDept.dept_name,school_id:selDept.school_id,hod_faculty_id:selDept.hod_faculty_id||"",faculty_list:hodOpts});setEditModal(true);}} style={{ padding:"6px 12px",borderRadius:6,border:"1px solid "+P,color:P,fontSize:11,background:"#fff",cursor:"pointer" }}>✏ Edit</button>
+                  <button onClick={()=>handleDeleteDept(selDept.dept_id,selDept.dept_name)} style={{ padding:"6px 12px",borderRadius:6,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:11,background:"#fff",cursor:"pointer" }}>🗑</button>
                 </div>
               </div>
-              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
+                {[
+                  ["Assigned HOD",faculty.find(f=>f.faculty_id===selDept.hod_faculty_id)?.name||"Not assigned","#E6F1FB","#0C447C"],
+                  ["Faculty Count",selDeptFaculty.length,"#EEEDFE",P],
+                  ["Department ID","#"+selDept.dept_id,"#f5f5f5","#666"],
+                ].map(([l,v,bg,c])=>(
+                  <div key={l} style={{ background:bg, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+                    <div style={{ fontSize:10, color:"#888", marginBottom:4 }}>{l}</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:c }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize:12, fontWeight:600, color:"#333", marginBottom:8 }}>Faculty ({selDeptFaculty.length})</div>
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                  <thead>
+                    <tr style={{ background:"#f8f8fb" }}>
+                      {["Name","Email","Role","Designation","Status","Actions"].map(h=><th key={h} style={{ padding:"7px 10px",fontSize:10,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selDeptFaculty.map(f=>(
+                      <tr key={f.faculty_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
+                        <td style={{ padding:"7px 10px", fontWeight:500, cursor:"pointer", color:P }} onClick={()=>viewFacultyProfile(f.faculty_id)}>{f.name}</td>
+                        <td style={{ padding:"7px 10px", color:"#555" }}>{f.email}</td>
+                        <td style={{ padding:"7px 10px" }}><FacBadge role={f.role} /></td>
+                        <td style={{ padding:"7px 10px", color:"#555" }}>{f.designation}</td>
+                        <td style={{ padding:"7px 10px" }}>
+                          <span style={{ fontSize:9, padding:"2px 6px", borderRadius:4, background:f.is_active?"#EAF3DE":"#FCEBEB", color:f.is_active?"#27500A":"#791F1F", fontWeight:500 }}>{f.is_active?"Active":"Inactive"}</span>
+                        </td>
+                        <td style={{ padding:"7px 10px" }}>
+                          <div style={{ display:"flex", gap:3 }}>
+                            <span onClick={()=>{setEditForm({...f});setEditModal(true);}} style={{ padding:"2px 6px",borderRadius:4,border:"1px solid "+P,color:P,fontSize:10,cursor:"pointer" }}>✏</span>
+                            {f.is_active
+                              ? <span onClick={()=>handleDeactivate(f.faculty_id,f.name)} style={{ padding:"2px 6px",borderRadius:4,border:"1px solid #633806",color:"#633806",fontSize:10,cursor:"pointer" }}>⏸</span>
+                              : <span onClick={()=>handleDelete(f.faculty_id,f.name)} style={{ padding:"2px 6px",borderRadius:4,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:10,cursor:"pointer" }}>🗑</span>
+                            }
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : selSchool ? (
+            <>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:600, color:"#1a1a1a" }}>🏛 {selSchool.school_name}</div>
+                  <div style={{ fontSize:11, color:"#888", marginTop:2 }}>{selSchoolDepts.length} Departments · {selSchoolFaculty.length} Faculty</div>
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <button onClick={()=>{setSelSchoolId(selSchool.school_id);setDeptModal(true);}} style={{ padding:"6px 12px",borderRadius:6,border:"1px solid "+P,color:P,fontSize:11,background:"#fff",cursor:"pointer" }}>+ Add Department</button>
+                  <button onClick={()=>handleDeleteSchool(selSchool.school_id,selSchool.school_name)} style={{ padding:"6px 12px",borderRadius:6,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:11,background:"#fff",cursor:"pointer" }}>🗑</button>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
+                {[
+                  ["Total Departments",selSchoolDepts.length,"#E6F1FB","#0C447C"],
+                  ["Total Faculty",selSchoolFaculty.length,"#EEEDFE",P],
+                  ["Dean",faculty.find(f=>f.role==="dean_rd"&&f.school_id===selSchool.school_id)?.name||"Not assigned","#E1F5EE","#085041"],
+                ].map(([l,v,bg,c])=>(
+                  <div key={l} style={{ background:bg, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+                    <div style={{ fontSize:10, color:"#888", marginBottom:4 }}>{l}</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:c }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize:12, fontWeight:600, color:"#333", marginBottom:8 }}>Departments</div>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
                 <thead>
                   <tr style={{ background:"#f8f8fb" }}>
-                    {["Department","Code","HOD","Faculty","Actions"].map(h=><th key={h} style={{ padding:"8px 12px",fontSize:11,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
+                    {["Department","Code","HOD","Faculty","Actions"].map(h=><th key={h} style={{ padding:"7px 10px",fontSize:10,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -898,18 +1129,15 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
                     const hod = faculty.find(f=>f.faculty_id===d.hod_faculty_id);
                     const dFac = faculty.filter(f=>f.dept_id===d.dept_id);
                     return (
-                      <tr key={d.dept_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
-                        <td style={{ padding:"10px 12px", fontSize:12, fontWeight:500, color:"#1a1a1a" }}>{d.dept_name}</td>
-                        <td style={{ padding:"10px 12px", fontSize:12, color:"#888" }}>{d.dept_code}</td>
-                        <td style={{ padding:"10px 12px", fontSize:12, color:P, cursor:hod?"pointer":"default" }} onClick={()=>hod&&viewFacultyProfile(hod.faculty_id)}>
-                          {hod ? <span style={{ borderBottom:"1px dashed rgba(91,61,245,0.3)" }}>{hod.name}</span> : "—"}
-                        </td>
-                        <td style={{ padding:"10px 12px", fontSize:12 }}>{dFac.length}</td>
-                        <td style={{ padding:"10px 12px" }}>
-                          <div style={{ display:"flex", gap:4 }}>
-                            <span style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #0C447C", color:"#0C447C", fontSize:11, cursor:"pointer" }}>👁</span>
-                            <span onClick={()=>{const hodOpts=faculty.filter(f=>f.role==="hod"||f.role==="faculty"); setEditForm({dept_id:d.dept_id,dept_code:d.dept_code,dept_name:d.dept_name,school_id:d.school_id,hod_faculty_id:d.hod_faculty_id||"",faculty_list:hodOpts}); setEditModal(true);}} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid "+P, color:P, fontSize:11, cursor:"pointer" }}>✏</span>
-                            <span onClick={()=>handleDeleteDept(d.dept_id,d.dept_name)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #A32D2D", color:"#A32D2D", fontSize:11, cursor:"pointer" }}>🗑</span>
+                      <tr key={d.dept_id} style={{ borderBottom:"1px solid #f5f5f5", cursor:"pointer" }} onClick={()=>{setSelDeptId(d.dept_id);}}>
+                        <td style={{ padding:"8px 10px", fontSize:11, fontWeight:500, color:"#1a1a1a" }}>{d.dept_name}</td>
+                        <td style={{ padding:"8px 10px", fontSize:11, color:"#888" }}>{d.dept_code}</td>
+                        <td style={{ padding:"8px 10px", fontSize:11, color:P }}>{hod?.name||"—"}</td>
+                        <td style={{ padding:"8px 10px", fontSize:11 }}>{dFac.length}</td>
+                        <td style={{ padding:"8px 10px" }}>
+                          <div style={{ display:"flex", gap:3 }}>
+                            <span onClick={e=>{e.stopPropagation();const hodOpts=faculty.filter(f=>f.role==="hod"||f.role==="faculty");setEditForm({dept_id:d.dept_id,dept_code:d.dept_code,dept_name:d.dept_name,school_id:d.school_id,hod_faculty_id:d.hod_faculty_id||"",faculty_list:hodOpts});setEditModal(true);}} style={{ padding:"3px 6px",borderRadius:4,border:"1px solid "+P,color:P,fontSize:10,cursor:"pointer" }}>✏</span>
+                            <span onClick={e=>{e.stopPropagation();handleDeleteDept(d.dept_id,d.dept_name);}} style={{ padding:"3px 6px",borderRadius:4,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:10,cursor:"pointer" }}>🗑</span>
                           </div>
                         </td>
                       </tr>
@@ -919,168 +1147,12 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
               </table>
             </>
           ) : (
-            <div style={{ padding:40, textAlign:"center", color:"#aaa", fontSize:13 }}>Select a school from the organization tree</div>
+            <div style={{ padding:40, textAlign:"center", color:"#aaa", fontSize:13 }}>
+              <div style={{ fontSize:36, marginBottom:10 }}>🏛</div>
+              <div>Select a School or Department from the Organization Explorer</div>
+            </div>
           )}
         </div>
-      </div>
-
-      <div style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16 }}>
-        <div style={{ display:"flex", gap:0, borderBottom:"1px solid #eee", marginBottom:14 }}>
-          {[
-            { key:"faculty", label:"Faculty Management" },
-            { key:"deans",   label:"Deans & HODs" },
-            { key:"users",   label:"Users" },
-          ].map(t=>(
-            <div key={t.key} onClick={()=>setActiveTab(t.key)} style={{ padding:"10px 18px", fontSize:12, fontWeight:500, cursor:"pointer", color:activeTab===t.key?P:"#888", borderBottom:activeTab===t.key?"2px solid "+P:"2px solid transparent", transition:"all 0.15s" }}>{t.label}</div>
-          ))}
-        </div>
-
-        {activeTab==="faculty" && (
-          <div>
-            <div style={{ display:"flex", gap:10, marginBottom:12, alignItems:"center" }}>
-              <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
-                <option value="all">All Roles</option>
-                <option value="faculty">Faculty</option>
-                <option value="hod">HOD</option>
-                <option value="dean_rd">Dean</option>
-              </select>
-              <select value={deptFilter} onChange={e=>setDeptFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
-                <option value="all">All Departments</option>
-                {depts.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}
-              </select>
-              <button onClick={()=>{setModal(true);}} style={{ marginLeft:"auto", background:P,color:"#fff",padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:500,border:"none",cursor:"pointer" }}>+ Add Faculty</button>
-            </div>
-            <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                <thead>
-                  <tr style={{ background:"#f8f8fb" }}>
-                    {["Name","Email","Role","Department","Status","Actions"].map(h=><th key={h} style={{ padding:"8px 12px",fontSize:11,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? <tr><td colSpan={6} style={{padding:30,textAlign:"center"}}>Loading...</td></tr>
-                  : filteredFaculty.map(f=>(
-                    <tr key={f.faculty_id} style={{ borderBottom:"1px solid #f5f5f5", opacity:f.is_active?1:0.5 }}>
-                      <td style={{ padding:"8px 12px", fontWeight:500, cursor:"pointer" }} onClick={()=>viewFacultyProfile(f.faculty_id)}>
-                        <span style={{ color:P, borderBottom:"1px dashed rgba(91,61,245,0.3)" }}>{f.name}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px", color:"#555" }}>{f.email}</td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, fontWeight:500,
-                          background:f.role==="dean_rd"?"#E1F5EE":f.role==="hod"?"#E6F1FB":"#EEEDFE",
-                          color:f.role==="dean_rd"?"#085041":f.role==="hod"?"#0C447C":P,
-                        }}>{f.role==="dean_rd"?"Dean":f.role==="hod"?"HOD":"Faculty"}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px", color:"#555" }}>{f.dept_name||"—"}</td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, background:f.is_active?"#EAF3DE":"#FCEBEB", color:f.is_active?"#27500A":"#791F1F", fontWeight:500 }}>{f.is_active?"Active":"Inactive"}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <div style={{ display:"flex", gap:4 }}>
-                          <span onClick={()=>{setEditForm({...f});setEditModal(true);}} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid "+P,color:P,fontSize:11,cursor:"pointer" }}>✏</span>
-                          {f.is_active
-                            ? <span onClick={()=>handleDeactivate(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #633806",color:"#633806",fontSize:11,cursor:"pointer" }}>⏸</span>
-                            : <span onClick={()=>handleDelete(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:11,cursor:"pointer" }}>🗑</span>
-                          }
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab==="deans" && (
-          <div>
-            <div style={{ display:"flex", gap:10, marginBottom:12, alignItems:"center" }}>
-              <select value={deptFilter} onChange={e=>setDeptFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
-                <option value="all">All Departments</option>
-                {depts.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}
-              </select>
-              <button onClick={()=>{setModal(true);}} style={{ marginLeft:"auto", background:P,color:"#fff",padding:"8px 20px",borderRadius:8,fontSize:12,fontWeight:500,border:"none",cursor:"pointer" }}>+ Add HOD</button>
-            </div>
-            <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                <thead>
-                  <tr style={{ background:"#f8f8fb" }}>
-                    {["Name","Email","Role","Department","Status","Actions"].map(h=><th key={h} style={{ padding:"8px 12px",fontSize:11,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {faculty.filter(f=>f.role==="hod"||f.role==="dean_rd").filter(f=>deptFilter==="all"||f.dept_id===parseInt(deptFilter)).map(f=>(
-                    <tr key={f.faculty_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
-                      <td style={{ padding:"8px 12px", fontWeight:500, cursor:"pointer" }} onClick={()=>viewFacultyProfile(f.faculty_id)}>
-                        <span style={{ color:P, borderBottom:"1px dashed rgba(91,61,245,0.3)" }}>{f.name}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px", color:"#555" }}>{f.email}</td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, fontWeight:500,
-                          background:f.role==="dean_rd"?"#E1F5EE":"#E6F1FB",
-                          color:f.role==="dean_rd"?"#085041":"#0C447C",
-                        }}>{f.role==="dean_rd"?"Dean":"HOD"}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px", color:"#555" }}>{f.dept_name||"All (Dean)"}</td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, background:f.is_active?"#EAF3DE":"#FCEBEB", color:f.is_active?"#27500A":"#791F1F", fontWeight:500 }}>{f.is_active?"Active":"Inactive"}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <div style={{ display:"flex", gap:4 }}>
-                          <span onClick={()=>{setEditForm({...f});setEditModal(true);}} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid "+P,color:P,fontSize:11,cursor:"pointer" }}>✏</span>
-                          <span onClick={()=>handleDeactivate(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #633806",color:"#633806",fontSize:11,cursor:"pointer" }}>⏸</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab==="users" && (
-          <div>
-            <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                <thead>
-                  <tr style={{ background:"#f8f8fb" }}>
-                    {["Name","Email","Role","Department","Status","Actions"].map(h=><th key={h} style={{ padding:"8px 12px",fontSize:11,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {faculty.filter(f=>deptFilter==="all"||f.dept_id===parseInt(deptFilter)).map(f=>(
-                    <tr key={f.faculty_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
-                      <td style={{ padding:"8px 12px", fontWeight:500, cursor:"pointer" }} onClick={()=>viewFacultyProfile(f.faculty_id)}>
-                        <span style={{ color:P, borderBottom:"1px dashed rgba(91,61,245,0.3)" }}>{f.name}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px", color:"#555" }}>{f.email}</td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, fontWeight:500,
-                          background:f.role==="dean_rd"?"#E1F5EE":f.role==="hod"?"#E6F1FB":"#EEEDFE",
-                          color:f.role==="dean_rd"?"#085041":f.role==="hod"?"#0C447C":P,
-                        }}>{f.role==="dean_rd"?"Dean":f.role==="hod"?"HOD":"Faculty"}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px", color:"#555" }}>{f.dept_name||"—"}</td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, background:f.is_active?"#EAF3DE":"#FCEBEB", color:f.is_active?"#27500A":"#791F1F", fontWeight:500 }}>{f.is_active?"Active":"Inactive"}</span>
-                      </td>
-                      <td style={{ padding:"8px 12px" }}>
-                        <div style={{ display:"flex", gap:4 }}>
-                          <span onClick={()=>{setEditForm({...f});setEditModal(true);}} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid "+P,color:P,fontSize:11,cursor:"pointer" }}>✏</span>
-                          {f.is_active
-                            ? <span onClick={()=>handleDeactivate(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #633806",color:"#633806",fontSize:11,cursor:"pointer" }}>⏸</span>
-                            : <span onClick={()=>handleDelete(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:11,cursor:"pointer" }}>🗑</span>
-                          }
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1345,6 +1417,166 @@ function ExportView({ faculty, schools, depts, P, showMsg, setActiveView }) {
         </div>
         <button onClick={()=>setActiveView("overview")} style={{ marginTop:18, padding:"8px 24px", background:"#f0f0f5", color:"#666", border:"none", borderRadius:8, fontSize:12, cursor:"pointer" }}>Back to Dashboard</button>
       </div>
+    </div>
+  );
+}
+
+// ═══ FACULTY DETAILS VIEW ═══
+function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, setFdSearch, fdRoleFilter, setFdRoleFilter, fdDeptFilter, setFdDeptFilter, depts, expandedFac, setExpandedFac, P, fdViewing, setFdViewing }) {
+
+  const fdFiltered = facultyDetails.filter(f => {
+    if (fdRoleFilter !== "all" && f.role !== fdRoleFilter) return false;
+    if (fdDeptFilter !== "all" && f.dept_id !== parseInt(fdDeptFilter)) return false;
+    if (!fdSearch) return true;
+    const q = fdSearch.toLowerCase();
+    return f.name?.toLowerCase().includes(q) || f.email?.toLowerCase().includes(q) || f.dept_name?.toLowerCase().includes(q);
+  });
+
+  const toggleFac = (id) => setExpandedFac(p => ({ ...p, [id]: !p[id] }));
+
+  if (fdViewing) {
+    const f = fdViewing;
+    return (
+      <div>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+          <span onClick={()=>setFdViewing(null)} style={{ color:P, fontSize:13, cursor:"pointer", fontWeight:500 }}>← Back to Faculty List</span>
+          <span style={{ color:"#ddd" }}>|</span>
+          <span style={{ fontSize:13, fontWeight:600 }}>{f.name} — Publications ({f.publications.length})</span>
+        </div>
+        <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+          <div style={{ background:"#fff", borderRadius:12, border:"1px solid #eee", padding:"10px 16px", fontSize:12, display:"flex", gap:20, flex:1 }}>
+            <div><span style={{ color:"#888" }}>Role:</span> <strong>{f.role}</strong></div>
+            <div><span style={{ color:"#888" }}>Dept:</span> <strong>{f.dept_name}</strong></div>
+            <div><span style={{ color:"#888" }}>Designation:</span> <strong>{f.designation}</strong></div>
+            <div><span style={{ color:"#888" }}>h-index:</span> <strong>{f.h_index}</strong></div>
+            <div><span style={{ color:"#888" }}>Total Pubs:</span> <strong>{f.total_publications}</strong></div>
+            <div><span style={{ color:"#888" }}>Citations:</span> <strong>{f.total_citations}</strong></div>
+          </div>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {f.publications.map(p => {
+            const isConf = p.publication_type === "Conference";
+            const desc = p.description || "";
+            const citData = p.citations_by_year || [];
+            const maxCit = Math.max(...citData.map(c => c.count || 0), 1);
+            return (
+              <div key={p.pub_id} style={{ background:"#fff", borderRadius:12, border:"1px solid #eee", padding:"16px 20px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8, marginBottom:6 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#1a1a1a", flex:1 }}>{p.title}</div>
+                  <span style={{ fontSize:10, padding:"2px 8px", borderRadius:4, fontWeight:500, whiteSpace:"nowrap", background:isConf ? "#FAEEDA" : "#E6F1FB", color:isConf ? "#633806" : "#0C447C" }}>{isConf ? "Conference" : "Journal"}</span>
+                </div>
+                <div style={{ fontSize:11, color:"#666", marginBottom:4 }}>
+                  {isConf ? (p.conference_name || p.journal_name) : p.journal_name}
+                  {p.year ? <span style={{color:"#aaa"}}> · {p.year}</span> : ""}
+                  {p.citations_count > 0 ? <span style={{color:"#aaa"}}> · {p.citations_count} citations</span> : ""}
+                  {p.quartile && p.quartile !== "N/A" ? <span style={{color:"#aaa"}}> · {p.quartile}</span> : ""}
+                  {p.indexing && p.indexing !== "None" ? <span style={{color:"#aaa"}}> · {p.indexing}</span> : ""}
+                </div>
+                {desc && (
+                  <p style={{ fontSize:11, color:"#555", lineHeight:1.6, margin:"6px 0 8px", whiteSpace:"pre-wrap" }}>{desc}</p>
+                )}
+                {citData.length > 0 && (
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:40, marginTop:6 }}>
+                    {citData.map(c => {
+                      const h = ((c.count||0) / maxCit) * 100;
+                      return (
+                        <div key={c.year} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:1 }}>
+                          <div style={{ width:"100%", borderRadius:"2px 2px 0 0", background:P, height:`${Math.max(h,3)}%`, minHeight:3, opacity:0.5+(h/100)*0.5 }} />
+                          <span style={{ fontSize:8, color:"#aaa" }}>{String(c.year).slice(2)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{ fontSize:10, color:"#aaa", marginTop:4, display:"flex", gap:12 }}>
+                  {p.doi ? <span>DOI: {p.doi}</span> : null}
+                  {p.publisher ? <span>Publisher: {p.publisher}</span> : null}
+                </div>
+              </div>
+            );
+          })}
+          {f.publications.length === 0 && <div style={{ textAlign:"center", padding:40, color:"#aaa" }}>No publications found for this faculty member</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize:16, fontWeight:600, marginBottom:4 }}>Faculty Details</div>
+      <div style={{ fontSize:11, color:"#888", marginBottom:14 }}>View all faculty members with their publication descriptions</div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+        <input value={fdSearch} onChange={e=>setFdSearch(e.target.value)} placeholder="Search faculty by name or email..." style={{ flex:1, minWidth:200, padding:"7px 12px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }} />
+        <select value={fdRoleFilter} onChange={e=>setFdRoleFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }}>
+          <option value="all">All Roles</option>
+          <option value="faculty">Faculty</option>
+          <option value="hod">HOD</option>
+          <option value="dean_rd">Dean</option>
+        </select>
+        <select value={fdDeptFilter} onChange={e=>setFdDeptFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }}>
+          <option value="all">All Departments</option>
+          {depts.map(d => <option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}
+        </select>
+      </div>
+
+      {facultyDetailsLoading ? (
+        <div style={{ textAlign:"center", padding:40 }}><div className="spinner" /></div>
+      ) : fdFiltered.length === 0 ? (
+        <div style={{ textAlign:"center", padding:40, color:"#aaa" }}>No faculty match your filters</div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {fdFiltered.map(f => (
+            <div key={f.faculty_id} style={{ background:"#fff", borderRadius:12, border:"1px solid #eee", overflow:"hidden" }}>
+              <div onClick={()=>toggleFac(f.faculty_id)} style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", background:expandedFac[f.faculty_id] ? "#f8f8fb" : "#fff" }}>
+                <div style={{ width:36, height:36, borderRadius:"50%", background:P, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:600, flexShrink:0 }}>{f.name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{f.name}</div>
+                  <div style={{ fontSize:11, color:"#888" }}>{f.email} · {f.dept_name} · {f.designation}</div>
+                </div>
+                <div style={{ display:"flex", gap:12, alignItems:"center", fontSize:11, color:"#888" }}>
+                  <span>📄 {f.total_publications}</span>
+                  <span>📊 {f.total_citations}</span>
+                  <span style={{ fontSize:10, padding:"2px 8px", borderRadius:4, fontWeight:500, background:f.role==="dean_rd"?"#FAEEDA":f.role==="hod"?"#E6F1FB":"#f0f0f0", color:f.role==="dean_rd"?"#633806":f.role==="hod"?"#0C447C":"#666" }}>{f.role === "dean_rd" ? "Dean" : f.role === "hod" ? "HOD" : "Faculty"}</span>
+                  <span>{expandedFac[f.faculty_id] ? "▲" : "▼"}</span>
+                </div>
+              </div>
+              {expandedFac[f.faculty_id] && (
+                <div>
+                  <div style={{ padding:"0 16px 12px", display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {f.publications.length > 0 ? (
+                      f.publications.slice(0, 5).map(p => {
+                        const isConf = p.publication_type === "Conference";
+                        return (
+                          <div key={p.pub_id} style={{ flex:"1 1 calc(50% - 6px)", minWidth:280, background:"#f9f9fc", borderRadius:8, padding:"10px 14px", cursor:"pointer" }} onClick={() => setFdViewing(f)}>
+                            <div style={{ fontSize:12, fontWeight:500, color:"#333", marginBottom:3 }}>{p.title}</div>
+                            <div style={{ fontSize:10, color:"#888", marginBottom:3 }}>
+                              {isConf ? (p.conference_name || p.journal_name) : p.journal_name} · {p.year}
+                            </div>
+                            {p.description && <div style={{ fontSize:10, color:"#666", lineHeight:1.5, marginBottom:3, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{p.description}</div>}
+                            <div style={{ display:"flex", gap:6 }}>
+                              <span style={{ fontSize:9, padding:"1px 6px", borderRadius:3, background:isConf?"#FAEEDA":"#E6F1FB", color:isConf?"#633806":"#0C447C" }}>{isConf ? "Conf" : "Journal"}</span>
+                              {p.citations_count > 0 && <span style={{ fontSize:9, color:"#888" }}>{p.citations_count} cit</span>}
+                              {p.quartile && p.quartile !== "N/A" && <span style={{ fontSize:9, color:"#888" }}>{p.quartile}</span>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ fontSize:11, color:"#aaa", padding:"10px 0" }}>No publications</div>
+                    )}
+                  </div>
+                  {f.publications.length > 5 && (
+                    <div style={{ padding:"0 16px 12px" }}>
+                      <span onClick={() => setFdViewing(f)} style={{ color:P, fontSize:11, cursor:"pointer", fontWeight:500 }}>View all {f.publications.length} publications →</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

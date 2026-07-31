@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, Text, Date, DateTime, Enum, ForeignKey
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -26,6 +27,7 @@ class Faculty(Base):
     __tablename__ = "faculty"
     faculty_id        = Column(Integer, primary_key=True, index=True)
     dept_id           = Column(Integer, ForeignKey("departments.dept_id"), nullable=True)
+    school_id         = Column(Integer, ForeignKey("schools.school_id"), nullable=True)
     name              = Column(String(100))
     email             = Column(String(150), unique=True, index=True)
     password_hash     = Column(String(255))
@@ -45,6 +47,22 @@ class Faculty(Base):
     is_active         = Column(Boolean, default=True)
     created_at        = Column(DateTime, server_default=func.now())
 
+    # ── Extended profile fields ──
+    phone              = Column(String(20))
+    dob                = Column(Date, nullable=True)
+    gender             = Column(String(20))
+    nationality        = Column(String(50))
+    employee_id        = Column(String(50))
+    qualification      = Column(String(200))
+    orcid_id           = Column(String(50))
+    current_position   = Column(String(100))
+    office_address     = Column(String(255))
+    institution        = Column(String(100))
+    specialization     = Column(String(200))
+    research_interests = Column(Text)
+    biography          = Column(Text)
+    languages_spoken   = Column(String(255))
+
     department     = relationship("Department", back_populates="faculty",
                                    foreign_keys=[dept_id])
     publications   = relationship("Publication", back_populates="faculty")
@@ -53,6 +71,16 @@ class Faculty(Base):
     achievements   = relationship("Achievement", back_populates="faculty")
     projects       = relationship("Project", back_populates="faculty")
     patents        = relationship("Patent", back_populates="faculty")
+    education      = relationship("FacultyEducation", back_populates="faculty",
+                                  cascade="all, delete-orphan")
+    experience     = relationship("FacultyExperience", back_populates="faculty",
+                                  cascade="all, delete-orphan")
+    certifications = relationship("FacultyCertification", back_populates="faculty",
+                                  cascade="all, delete-orphan")
+    academic_links = relationship("FacultyAcademicLink", back_populates="faculty",
+                                  cascade="all, delete-orphan")
+    social_links   = relationship("FacultySocialLink", back_populates="faculty",
+                                  cascade="all, delete-orphan")
 
 class Publication(Base):
     __tablename__ = "publications"
@@ -112,14 +140,17 @@ class FacultyResearchArea(Base):
 
 class Achievement(Base):
     __tablename__ = "achievements"
-    achievement_id = Column(Integer, primary_key=True)
-    faculty_id     = Column(Integer, ForeignKey("faculty.faculty_id"))
-    title          = Column(String(300))
-    category       = Column(String(50))
-    issuer         = Column(String(200))
-    year           = Column(Integer)
-    amount         = Column(Float, nullable=True)
-    faculty        = relationship("Faculty", back_populates="achievements")
+    achievement_id  = Column(Integer, primary_key=True)
+    faculty_id      = Column(Integer, ForeignKey("faculty.faculty_id"))
+    title           = Column(String(300))
+    category        = Column(String(50))
+    issuer          = Column(String(200))
+    year            = Column(Integer)
+    amount          = Column(Float, nullable=True)
+    description     = Column(Text)
+    achievement_date = Column(Date, nullable=True)
+    certificate_url = Column(String(500))
+    faculty         = relationship("Faculty", back_populates="achievements")
 
 class Project(Base):
     __tablename__ = "projects"
@@ -175,3 +206,57 @@ class Patent(Base):
     publication_date = Column(Date)
 
     faculty = relationship("Faculty", back_populates="patents")
+
+class FacultyEducation(Base):
+    __tablename__ = "faculty_education"
+    education_id = Column(Integer, primary_key=True)
+    faculty_id   = Column(Integer, ForeignKey("faculty.faculty_id"))
+    degree       = Column(String(150))
+    university   = Column(String(200))
+    institute    = Column(String(200))
+    year         = Column(Integer)
+    percentage   = Column(Float, nullable=True)
+    description  = Column(Text)
+    faculty      = relationship("Faculty", back_populates="education")
+
+class FacultyExperience(Base):
+    __tablename__ = "faculty_experience"
+    experience_id = Column(Integer, primary_key=True)
+    faculty_id    = Column(Integer, ForeignKey("faculty.faculty_id"))
+    organization  = Column(String(200))
+    position      = Column(String(150))
+    start_date    = Column(Date, nullable=True)
+    end_date      = Column(Date, nullable=True)
+    is_current    = Column(Boolean, default=False)
+    description   = Column(Text)
+    faculty       = relationship("Faculty", back_populates="experience")
+
+class FacultyCertification(Base):
+    __tablename__ = "faculty_certifications"
+    cert_id        = Column(Integer, primary_key=True)
+    faculty_id     = Column(Integer, ForeignKey("faculty.faculty_id"))
+    name           = Column(String(200))
+    issuing_org    = Column(String(200))
+    issue_date     = Column(Date, nullable=True)
+    expiry_date    = Column(Date, nullable=True)
+    credential_id  = Column(String(100))
+    credential_url = Column(String(500))
+    certificate_url = Column(String(500))
+    faculty        = relationship("Faculty", back_populates="certifications")
+
+class FacultyAcademicLink(Base):
+    __tablename__ = "faculty_academic_links"
+    link_id      = Column(Integer, primary_key=True)
+    faculty_id   = Column(Integer, ForeignKey("faculty.faculty_id"))
+    platform     = Column(String(50))  # google_scholar | scopus | orcid | publons | wos
+    url          = Column(String(500))
+    is_connected = Column(Boolean, default=False)
+    faculty      = relationship("Faculty", back_populates="academic_links")
+
+class FacultySocialLink(Base):
+    __tablename__ = "faculty_social_links"
+    link_id    = Column(Integer, primary_key=True)
+    faculty_id = Column(Integer, ForeignKey("faculty.faculty_id"))
+    platform   = Column(String(50))  # linkedin | twitter | researchgate | github | website
+    url        = Column(String(500))
+    faculty    = relationship("Faculty", back_populates="social_links")

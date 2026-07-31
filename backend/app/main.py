@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.database import engine, Base
+import os
 from app.routers import auth, faculty, publications, projects, patents, achievements, hod
 from app.routers import auth, faculty, publications, projects, patents, achievements, hod, dean
 from app.routers import auth, faculty, publications, projects, patents, achievements, hod, dean, ml
@@ -10,11 +12,15 @@ from app.routers import students
 from app.routers import activity
 from app.routers import announcements
 from app.routers import admin
+from app.routers import profile
 from app.security import get_password_hash
 from app.database import SessionLocal
 from app.routers.admin import Admin
 
 Base.metadata.create_all(bind=engine)
+
+from app.migrations import run_migrations
+run_migrations()
 
 # Seed default admin on startup
 def seed_admin():
@@ -68,6 +74,11 @@ app.include_router(students.router, prefix="/students", tags=["Students"])
 app.include_router(activity.router, prefix="/activity", tags=["Activity"])
 app.include_router(announcements.router, prefix="/announcements", tags=["Announcements"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(profile.router, prefix="/profile", tags=["Profile"])
+
+UPLOAD_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
 @app.get("/")
 def root():
     return {"message": "NIET Research Portal API is running ✓"}

@@ -70,7 +70,7 @@ export default function Settings() {
   const name = localStorage.getItem("name") || "User";
   const email = localStorage.getItem("email") || "";
   const initials = name.split(" ").filter(w => !w.startsWith("Dr.")).slice(0,2).map(w=>w[0]).join("").toUpperCase();
-  const roleLabel = role === "hod" ? "Head of Department" : role === "dean_rd" ? "Dean R&D" : "Faculty";
+  const roleLabel = role === "hod" ? "Head of Department" : role === "dean_rd" ? "Dean" : "Faculty";
 
   const completionChecks = [
     !!(profile?.name && profile?.designation),

@@ -1,6 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import API from "../services/api";
+
+const CAT_ICONS = {
+  "Research Funding": "💰", "Conference": "🎤", "Journal": "📄", "Patent / IPR": "💡",
+  "Workshop": "🛠️", "Seminar": "🎓", "FDP": "👨‍🏫", "Research Grant": "💵", "Faculty Meeting": "🤝",
+  "Administrative Notice": "📋", "Academic Notice": "📌", "Student Research": "🔬", "Deadline": "⏰",
+  "Awards & Achievements": "🏆", "General Announcement": "📢",
+};
+const notifIcon = (c) => CAT_ICONS[c] || "📢";
+const timeAgo = (d) => {
+  if (!d) return "";
+  const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const dd = Math.floor(h / 24);
+  return `${dd}d ago`;
+};
+const P = "#534AB7";
+
 
 export default function Sidebar() {
   const location = useLocation();
@@ -29,20 +50,19 @@ export default function Sidebar() {
     { icon: "🎓", label: "Student Research", path: `${prefix}/students` },
     { icon: "📋", label: "Reports",          path: `${prefix}/reports` },
     { icon: "📝", label: "Activity Log",     path: `${prefix}/activity` },
+    { icon: "📢", label: "Announcements",     path: `${prefix}/announcements` },
     { icon: "⚙️", label: "Settings",         path: `${prefix}/settings` },
   ];
 
   // ── HOD-only extra nav ────────────────────────────────────────────────
   const HOD_NAV = [
     { icon: "👥", label: "Faculty & Researchers", path: "/hod/faculty" },
-    { icon: "📢", label: "Announcements",          path: "/hod/announcements" },
   ];
 
   // ── Dean-only extra nav ───────────────────────────────────────────────
   const DEAN_NAV = [
     { icon: "👤", label: "My Research",       path: "/dean/myresearch" },
     { icon: "👥", label: "All Faculty",       path: "/dean/faculty" },
-    { icon: "📢", label: "Announcements",     path: "/dean/announcements" },
   ];
 
   const EXTRA_NAV =
@@ -67,9 +87,53 @@ export default function Sidebar() {
     .filter(w => !w.startsWith("Dr."))
     .slice(0, 2).map(w => w[0]).join("").toUpperCase();
 
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [notifs, setNotifs] = useState([]);
+  const [notifsLoading, setNotifsLoading] = useState(false);
+
+  const refreshUnread = () => {
+    API.get("/announcements/unread/count")
+      .then(r => setUnreadCount(r.data.unread || 0))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshUnread();
+    const iv = setInterval(refreshUnread, 30000);
+    window.addEventListener("focus", refreshUnread);
+    return () => { clearInterval(iv); window.removeEventListener("focus", refreshUnread); };
+  }, []);
+
+  useEffect(() => { setPanelOpen(false); }, [location.pathname]);
+
+  const openPanel = async () => {
+    if (panelOpen) { setPanelOpen(false); return; }
+    setPanelOpen(true);
+    setNotifsLoading(true);
+    try {
+      const [listRes] = await Promise.all([
+        API.get("/announcements/"),
+        API.post("/announcements/read-all").catch(() => ({})),
+      ]);
+      setNotifs(Array.isArray(listRes.data) ? listRes.data : []);
+      setUnreadCount(0);
+    } catch {
+      setNotifs([]);
+    } finally {
+      setNotifsLoading(false);
+    }
+  };
+
+  const markAllRead = async () => {
+    try { await API.post("/announcements/read-all"); } catch {}
+    setUnreadCount(0);
+    refreshUnread();
+  };
+
   const roleLabel =
     role === "hod"     ? "HOD" :
-    role === "dean_rd" ? "Dean R&D" : "Faculty";
+    role === "dean_rd" ? "Dean" : "Faculty";
 
   const roleBg =
     role === "hod"     ? "#0C447C" :
@@ -108,6 +172,7 @@ export default function Sidebar() {
   };
 
   return (
+    <>
     <div style={{
       width: 215, minHeight: "100vh", background: "#1e1b4b",
       display: "flex", flexDirection: "column", flexShrink: 0,
@@ -143,6 +208,17 @@ export default function Sidebar() {
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         background: "rgba(255,255,255,0.04)",
       }}>
+        <button onClick={openPanel} style={{ position:"relative", marginRight:4, background:"none", border:"none", cursor:"pointer", padding:4 }}>
+          <span style={{ fontSize:16, color:"rgba(255,255,255,0.7)" }}>🔔</span>
+          {unreadCount > 0 && (
+            <span style={{
+              position:"absolute", top:-2, right:-4, background:"#A32D2D",
+              color:"#fff", fontSize:8, fontWeight:700, borderRadius:"50%",
+              width:14, height:14, display:"flex", alignItems:"center",
+              justifyContent:"center", lineHeight:1,
+            }}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+          )}
+        </button>
         <div style={{
           width: 36, height: 36, background: roleBg, borderRadius: "50%",
           display: "flex", alignItems: "center", justifyContent: "center",
@@ -257,9 +333,47 @@ export default function Sidebar() {
             paddingTop: 8,
           }}>
           🚪 <span>Logout</span>
+          </div>
         </div>
       </div>
 
-    </div>
+      {/* ═══ Notification panel ═══ */}
+      {panelOpen && (
+        <>
+          <div onClick={() => setPanelOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 2999 }} />
+          <div style={{
+            position: "fixed", left: 230, top: 120, width: 350, maxHeight: 460,
+            background: "#fff", borderRadius: 14, boxShadow: "0 10px 36px rgba(0,0,0,0.22)",
+            zIndex: 3000, display: "flex", flexDirection: "column", overflow: "hidden",
+          }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>🔔 Notifications</span>
+              <button onClick={markAllRead} style={{ fontSize: 11, color: P, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Mark all as read</button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {notifsLoading ? (
+                <div style={{ padding: 20, textAlign: "center" }}>
+                  <div className="spinner" style={{ width: 18, height: 18 }} />
+                </div>
+              ) : notifs.length === 0 ? (
+                <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 11, color: "#999" }}>No notifications yet.</div>
+              ) : notifs.map(n => (
+                <Link to={`${prefix}/announcements`} key={n.announcement_id} onClick={() => setPanelOpen(false)} style={{ display: "flex", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f5f5f5", textDecoration: "none" }}>
+                  <span style={{ fontSize: 16 }}>{notifIcon(n.category)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1a1a1a", lineHeight: 1.4 }}>{n.title}</div>
+                    {n.summary && <div style={{ fontSize: 11, color: "#666", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.summary}</div>}
+                    <div style={{ fontSize: 10, color: "#aaa", marginTop: 3 }}>{timeAgo(n.created_at)}{n.category ? ` · ${n.category}` : ""}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div style={{ padding: "8px 14px", borderTop: "1px solid #eee", textAlign: "center" }}>
+              <Link to={`${prefix}/announcements`} onClick={() => setPanelOpen(false)} style={{ fontSize: 11, color: P, fontWeight: 500, textDecoration: "none" }}>View all announcements →</Link>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }

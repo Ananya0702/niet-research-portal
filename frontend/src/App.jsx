@@ -45,7 +45,7 @@ function App() {
         <Route path="/activity"      element={<ActivityLog />} />
         <Route path="/settings"       element={<Settings />} />
         <Route path="/faculty"        element={<FacultyList />} />
-        
+        <Route path="/announcements"   element={<Announcements />} />
 
         {/* HOD */}
         <Route path="/hod/dashboard"      element={<HODDashboard />} />
@@ -57,6 +57,7 @@ function App() {
         <Route path="/hod/reports"    element={<Reports />} />
         <Route path="/hod/activity"  element={<ActivityLog />} />
         <Route path="/hod/settings"   element={<Settings />} />
+        <Route path="/hod/announcements" element={<Announcements />} />
 
         {/* Dean */}
         <Route path="/dean/dashboard"      element={<DeanDashboard />} />

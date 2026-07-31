@@ -4,7 +4,7 @@ import { loginAPI } from "../services/api";
 const TEST_ACCOUNTS = [
   { role: "Faculty",  email: "vivek@niet.co.in",  password: "password123" },
   { role: "HOD",      email: "neha@niet.co.in",   password: "password123" },
-  { role: "Dean R&D", email: "dean@niet.co.in",   password: "password123" },
+  { role: "Dean", email: "dean@niet.co.in",   password: "password123" },
 ];
 
 export default function Login() {
@@ -26,8 +26,14 @@ export default function Login() {
       if (res.data.role === "hod")          window.location.href = "/hod/dashboard";
       else if (res.data.role === "dean_rd") window.location.href = "/dean/dashboard";
       else                                  window.location.href = "/dashboard";
-    } catch {
-      setError("Invalid email or password. Please try again.");
+    } catch (err) {
+      if (!err.response) {
+        setError("Cannot reach the server. Is the backend running?");
+      } else if (err.response.status === 401) {
+        setError("Invalid email or password. Please try again.");
+      } else {
+        setError(err.response?.data?.detail || "Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

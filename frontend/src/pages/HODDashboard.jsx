@@ -15,24 +15,6 @@ const F_COLORS = {
 };
 const A_COLORS = ["#534AB7","#185FA5","#0F6E56","#BA7517","#A32D2D","#888780"];
 
-// School → Department hierarchy
-const SCHOOL_DEPT_MAP = {
-  "School of Engineering & Technology": [
-    { code: "CSE",     name: "Computer Science & Engineering" },
-    { code: "ECE",     name: "Electronics & Communication Engg." },
-    { code: "ME",      name: "Mechanical Engineering" },
-    { code: "EEE",     name: "Electrical & Electronics Engg." },
-  ],
-  "School of Computer Applications": [
-    { code: "AI_DS",   name: "Artificial Intelligence & Data Science" },
-  ],
-  "School of Applied Sciences": [
-    { code: "APPLIED", name: "Applied Sciences" },
-  ],
-};
-
-const SCHOOLS = Object.keys(SCHOOL_DEPT_MAP);
-
 function KPICard({ icon, label, value, sub, bg }) {
   return (
     <div style={{
@@ -52,11 +34,23 @@ function KPICard({ icon, label, value, sub, bg }) {
   );
 }
 
+// Read-only locked filter chip
+function LockedChip({ label, value }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+      <div style={{
+        padding:"7px 14px", borderRadius:8, border:"1px solid #ddd",
+        fontSize:12, background:"#f5f5f5", color:"#555", fontWeight:500,
+        maxWidth:280, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+      }}>{value}</div>
+      <span title={`${label} locked to your scope`} style={{ fontSize:12, color:"#888", cursor:"help" }}>🔒</span>
+    </div>
+  );
+}
+
 export default function HODDashboard() {
-  const [data,          setData]          = useState(null);
-  const [loading,       setLoading]       = useState(true);
-  const [selectedSchool, setSelectedSchool] = useState("All Schools");
-  const [selectedDept,   setSelectedDept]   = useState("All Departments");
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     API.get("/hod/dashboard")
@@ -64,17 +58,6 @@ export default function HODDashboard() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
-
-  // When school changes, reset department
-  const handleSchoolChange = (school) => {
-    setSelectedSchool(school);
-    setSelectedDept("All Departments");
-  };
-
-  // Get departments for selected school
-  const deptOptions = selectedSchool === "All Schools"
-    ? Object.values(SCHOOL_DEPT_MAP).flat()
-    : SCHOOL_DEPT_MAP[selectedSchool] || [];
 
   if (loading) return (
     <Layout>
@@ -92,23 +75,13 @@ export default function HODDashboard() {
   );
 
   const {
-    kpis, publications_by_year, citations_by_year,
+    scope, kpis, publications_by_year, citations_by_year,
     quartile_breakdown, research_areas, top_faculty,
     funding_overview, recent_publications, dept_at_glance,
   } = data;
 
-  // Filter top faculty by selected dept
-  const filteredFaculty = selectedDept === "All Departments"
-    ? top_faculty
-    : top_faculty.filter(f =>
-        (f.dept_name || f.department || "") === selectedDept
-      );
-
-  // Active filter label
-  const filterLabel =
-    selectedDept !== "All Departments" ? selectedDept :
-    selectedSchool !== "All Schools"   ? selectedSchool :
-    null;
+  const schoolName = scope?.school_name || "Your School";
+  const deptName   = scope?.dept_name   || "";
 
   return (
     <Layout>
@@ -122,79 +95,32 @@ export default function HODDashboard() {
         <div>
           <div style={{ fontSize:18, fontWeight:600 }}>HOD Dashboard</div>
           <div style={{ fontSize:12, color:"#888", marginTop:2 }}>
-            {filterLabel
-              ? `Filtered: ${filterLabel} · Academic Year ${new Date().getFullYear()}`
-              : `CSE Department · Academic Year ${new Date().getFullYear()}`}
+            {deptName} Department · Academic Year {new Date().getFullYear()}
           </div>
         </div>
 
-        {/* Filter Dropdowns */}
+        {/* Locked Scope Filters */}
         <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-          <span style={{ fontSize:12, color:"#888" }}>Filter by:</span>
-
-          {/* School Dropdown */}
-          <select
-            value={selectedSchool}
-            onChange={e => handleSchoolChange(e.target.value)}
-            style={{
-              padding:"7px 12px", borderRadius:8, border:"1px solid #ddd",
-              fontSize:12, outline:"none", background:"#fff",
-              color:"#333", cursor:"pointer",
-            }}>
-            <option value="All Schools">All Schools</option>
-            {SCHOOLS.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          {/* Department Dropdown */}
-          <select
-            value={selectedDept}
-            onChange={e => setSelectedDept(e.target.value)}
-            disabled={selectedSchool === "All Schools"}
-            style={{
-              padding:"7px 12px", borderRadius:8, border:"1px solid #ddd",
-              fontSize:12, outline:"none",
-              background: selectedSchool === "All Schools" ? "#f5f5f5" : "#EEEDFE",
-              color: selectedSchool === "All Schools" ? "#aaa" : "#534AB7",
-              cursor: selectedSchool === "All Schools" ? "default" : "pointer",
-              fontWeight: selectedDept !== "All Departments" ? 600 : 400,
-            }}>
-            <option value="All Departments">All Departments</option>
-            {deptOptions.map(d => (
-              <option key={d.code} value={d.name}>{d.name}</option>
-            ))}
-          </select>
-
-          {/* Clear button */}
-          {(selectedSchool !== "All Schools" || selectedDept !== "All Departments") && (
-            <button
-              onClick={() => { setSelectedSchool("All Schools"); setSelectedDept("All Departments"); }}
-              style={{
-                padding:"6px 12px", borderRadius:8, border:"1px solid #ddd",
-                fontSize:11, background:"#fff", cursor:"pointer",
-                color:"#A32D2D",
-              }}>✕ Clear</button>
-          )}
+          <span style={{ fontSize:12, color:"#888" }}>Scope:</span>
+          <LockedChip label="School" value={schoolName} />
+          <LockedChip label="Department" value={deptName || "—"} />
         </div>
       </div>
 
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
 
-        {/* Filter info banner */}
-        {filterLabel && (
-          <div style={{
-            background:"#EEEDFE", border:"1px solid #534AB7",
-            borderRadius:8, padding:"8px 14px", marginBottom:12,
-            fontSize:12, color:"#534AB7", display:"flex",
-            alignItems:"center", gap:8,
-          }}>
-            🔍 Showing data for: <strong>{filterLabel}</strong>
-            <span style={{ color:"#888", marginLeft:4 }}>
-              — other filters apply within your department scope
-            </span>
-          </div>
-        )}
+        {/* Scope info banner */}
+        <div style={{
+          background:"#EEEDFE", border:"1px solid #534AB7",
+          borderRadius:8, padding:"8px 14px", marginBottom:12,
+          fontSize:12, color:"#534AB7", display:"flex",
+          alignItems:"center", gap:8,
+        }}>
+          🔍 Showing data for: <strong>{deptName || "your department"}</strong>
+          <span style={{ color:"#888", marginLeft:4 }}>
+            ({schoolName}) — access locked to your assigned department
+          </span>
+        </div>
 
         {/* KPI Cards */}
         <div style={{
@@ -309,7 +235,7 @@ export default function HODDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filteredFaculty.map((f, i) => (
+                {top_faculty.map((f, i) => (
                   <tr key={f.faculty_id}>
                     <td style={{ padding:"8px 8px", fontSize:12, color:"#888" }}>
                       {i + 1}
