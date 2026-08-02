@@ -53,6 +53,11 @@ export default function Dashboard() {
           quartile_breakdown, research_areas,
           recent_publications, achievements } = data;
 
+  const g = kpis.growth || {};
+  const growthStr = (pct, abs) =>
+    pct === null || pct === undefined ? "" :
+    `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs last year${abs && abs !== 0 ? ` (${abs >= 0 ? "+" : ""}${abs})` : ""}`;
+
   return (
     <Layout>
       {/* Topbar */}
@@ -74,17 +79,17 @@ export default function Dashboard() {
           gap: 10, marginBottom: 14,
         }}>
           <KPICard icon="📄" label="Total Publications"
-            value={kpis.total_publications}    growth="↑ 20% vs 2023" bg="#EEEDFE" />
+            value={kpis.total_publications}    growth={growthStr(g.publications, g.publications_abs)} bg="#EEEDFE" />
           <KPICard icon="📚" label="Publications This Year"
-            value={kpis.publications_this_year} growth="↑ 33% vs 2023" bg="#E6F1FB" />
+            value={kpis.publications_this_year} growth={growthStr(g.publications, g.publications_abs)} bg="#E6F1FB" />
           <KPICard icon="💬" label="Total Citations"
-            value={kpis.total_citations?.toLocaleString()} growth="↑ 18% vs 2023" bg="#EAF3DE" />
+            value={kpis.total_citations?.toLocaleString()} growth={growthStr(g.citations)} bg="#EAF3DE" />
           <KPICard icon="📈" label="h-index"
-            value={kpis.h_index}               growth="↑ 1 vs 2023"   bg="#FAEEDA" />
+            value={kpis.h_index}               growth="From Google Scholar sync" bg="#FAEEDA" />
           <KPICard icon="👥" label="i10-index"
-            value={kpis.i10_index}             growth="↑ 2 vs 2023"   bg="#E1F5EE" />
+            value={kpis.i10_index}             growth="From Google Scholar sync" bg="#E1F5EE" />
           <KPICard icon="🎯" label="Avg Impact Factor"
-            value={kpis.avg_impact_factor}     growth="↑ 0.45 vs 2023" bg="#FCEBEB" />
+            value={kpis.avg_impact_factor}     growth={growthStr(g.impact_factor)} bg="#FCEBEB" />
         </div>
 
         {/* Charts Row */}

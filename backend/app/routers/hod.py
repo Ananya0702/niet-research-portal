@@ -64,6 +64,18 @@ def get_hod_dashboard(db: Session = Depends(get_db),
     # Total citations derived from publication records
     total_citations = sum(p.citations_count or 0 for p in all_pubs)
 
+    # Year-over-year growth
+    from app.metrics import yoy_percent, yoy_delta
+    pubs_by_year_map = defaultdict(int)
+    cit_by_year_map  = defaultdict(int)
+    for p in all_pubs:
+        if p.year:
+            pubs_by_year_map[p.year] += 1
+            cit_by_year_map[p.year] += p.citations_count or 0
+    pubs_growth = yoy_percent(pubs_by_year_map)
+    cits_growth = yoy_percent(cit_by_year_map)
+    pubs_delta  = yoy_delta(pubs_by_year_map)
+
     # Publications by year (dept level)
     pubs_by_year = defaultdict(int)
     for p in all_pubs:
@@ -169,6 +181,12 @@ def get_hod_dashboard(db: Session = Depends(get_db),
             "total_funding_lakhs":    round(sum(funding.values()), 2),
             "patents_filed":          patents_count,
             "phd_faculty":            phd_count,
+            "phd_percent":            round(phd_count / len(all_faculty) * 100, 1) if all_faculty else 0,
+            "growth": {
+                "publications":      pubs_growth,
+                "publications_abs":  pubs_delta,
+                "citations":         cits_growth,
+            },
         },
         "publications_by_year": [
             {"year": y, "count": c}

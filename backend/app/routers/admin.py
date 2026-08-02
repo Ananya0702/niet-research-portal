@@ -8,6 +8,7 @@ from app.security import get_password_hash, verify_password, create_access_token
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime as dt
 from collections import defaultdict
 
 router = APIRouter()
@@ -88,13 +89,27 @@ def admin_dashboard(db: Session = Depends(get_db),
                     current=Depends(get_current_admin)):
     total_faculty   = db.query(Faculty).filter(Faculty.is_active == True).count()
     total_pubs      = db.query(Publication).count()
-    pubs_this_year  = db.query(Publication).filter(Publication.year == 2024).count()
+    cur_year        = dt.now().year
+    pubs_this_year  = db.query(Publication).filter(Publication.year == cur_year).count()
     total_cits      = db.query(func.sum(Publication.citations_count)).scalar() or 0
     total_projects  = db.query(Project).count()
     total_patents   = db.query(Patent).count()
     total_depts     = db.query(Department).count()
     total_schools   = db.query(School).count()
     phd_count       = db.query(Faculty).filter(Faculty.is_phd == True, Faculty.is_active == True).count()
+
+    # Year-over-year growth from real data
+    from app.metrics import yoy_percent
+    pubs_by_year = dict(
+        db.query(Publication.year, func.count(Publication.pub_id))
+        .filter(Publication.year != None).group_by(Publication.year).all()
+    )
+    cit_by_year = dict(
+        db.query(Publication.year, func.sum(Publication.citations_count))
+        .filter(Publication.year != None).group_by(Publication.year).all()
+    )
+    pubs_growth = yoy_percent(pubs_by_year)
+    cits_growth = yoy_percent(cit_by_year)
 
     dept_breakdown = []
     for d in db.query(Department).all():
@@ -125,6 +140,10 @@ def admin_dashboard(db: Session = Depends(get_db),
             "total_departments": total_depts,
             "total_schools":    total_schools,
             "phd_faculty":      phd_count,
+            "growth": {
+                "publications": pubs_growth,
+                "citations":    cits_growth,
+            },
         },
         "dept_breakdown": dept_breakdown,
     }

@@ -96,6 +96,13 @@ def get_dean_dashboard(
         if p.year:
             citations_by_year[p.year] += p.citations_count or 0
 
+    # Year-over-year growth
+    from app.metrics import yoy_percent, yoy_delta, avg_if_by_year
+    pubs_growth = yoy_percent(pubs_by_year)
+    cits_growth = yoy_percent(citations_by_year)
+    if_growth   = yoy_percent(avg_if_by_year(all_pubs))
+    pubs_delta  = yoy_delta(pubs_by_year)
+
     # Quartile breakdown
     quartile_count = defaultdict(int)
     for p in all_pubs:
@@ -224,6 +231,12 @@ def get_dean_dashboard(
             "active_faculty":         len(all_faculty),
             "inst_h_index":           inst_h_index,
             "avg_impact_factor":      avg_if,
+            "growth": {
+                "publications":      pubs_growth,
+                "publications_abs":  pubs_delta,
+                "citations":         cits_growth,
+                "impact_factor":     if_growth,
+            },
         },
         "publications_by_year": [
             {"year": y, "count": c}

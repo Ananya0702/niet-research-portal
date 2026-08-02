@@ -80,6 +80,11 @@ export default function HODDashboard() {
     funding_overview, recent_publications, dept_at_glance,
   } = data;
 
+  const g = kpis.growth || {};
+  const growthStr = (pct, abs) =>
+    pct === null || pct === undefined ? "" :
+    `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs last year${abs && abs !== 0 ? ` (${abs >= 0 ? "+" : ""}${abs})` : ""}`;
+
   const schoolName = scope?.school_name || "Your School";
   const deptName   = scope?.dept_name   || "";
 
@@ -129,22 +134,22 @@ export default function HODDashboard() {
         }}>
           <KPICard icon="📄" label="Total Publications"
             value={kpis.total_publications}
-            sub="↑ 28.6% vs 2023" bg="#EEEDFE" />
+            sub={growthStr(g.publications, g.publications_abs)} bg="#EEEDFE" />
           <KPICard icon="📚" label="This Year"
             value={kpis.publications_this_year}
-            sub="↑ 20% vs 2023" bg="#E6F1FB" />
+            sub={growthStr(g.publications, g.publications_abs)} bg="#E6F1FB" />
           <KPICard icon="💬" label="Total Citations"
             value={kpis.total_citations?.toLocaleString()}
-            sub="↑ 27.3% vs 2023" bg="#EAF3DE" />
+            sub={growthStr(g.citations)} bg="#EAF3DE" />
           <KPICard icon="👥" label="Active Faculty"
             value={kpis.active_faculty}
             sub={`of ${kpis.total_faculty}`} bg="#FAEEDA" />
           <KPICard icon="🎓" label="PhD Faculty"
             value={kpis.phd_faculty}
-            sub="56.3%" bg="#E1F5EE" />
+            sub={`${kpis.phd_percent ?? "—"}% of faculty`} bg="#E1F5EE" />
           <KPICard icon="💰" label="Research Funding"
             value={`₹${kpis.total_funding_lakhs}L`}
-            sub="↑ 15.4% vs 2023" bg="#FCEBEB" />
+            sub={`${funding_overview?.length ?? 0} funding sources`} bg="#FCEBEB" />
         </div>
 
         {/* Charts Row */}

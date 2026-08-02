@@ -79,6 +79,11 @@ export default function DeanDashboard() {
     top_faculty, dept_scorecard, latest_publications,
   } = data;
 
+  const g = kpis.growth || {};
+  const growthStr = (pct, abs) =>
+    pct === null || pct === undefined ? "" :
+    `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct)}% vs last year${abs && abs !== 0 ? ` (${abs >= 0 ? "+" : ""}${abs})` : ""}`;
+
   const schoolName   = scope?.school_name || "Your School";
   const departments  = scope?.departments || [];
   const deptOptions  = departments;
@@ -176,23 +181,23 @@ export default function DeanDashboard() {
         }}>
           <KPICard icon="📄" label="Total Publications"
             value={kpis.total_publications}
-            sub="↑ 18.6% vs 2023" bg="#EEEDFE" />
+            sub={growthStr(g.publications, g.publications_abs)} bg="#EEEDFE" />
           <KPICard icon="📚" label="Publications This Year"
             value={kpis.publications_this_year}
-            sub="↑ 22.4% vs 2023" bg="#E6F1FB" />
+            sub={growthStr(g.publications, g.publications_abs)} bg="#E6F1FB" />
           <KPICard icon="💬" label="Total Citations"
             value={kpis.total_citations?.toLocaleString()}
-            sub="↑ 20.1% vs 2023" bg="#EAF3DE" />
+            sub={growthStr(g.citations)} bg="#EAF3DE" />
           <KPICard icon="👥" label="Active Faculty"
             value={kpis.active_faculty}
             sub={!deptId ? `across all depts of ${schoolName}` : selectedDept.dept_name}
             bg="#FAEEDA" />
           <KPICard icon="🏆" label="h-index (Institution)"
             value={kpis.inst_h_index}
-            sub="↑ 6 vs 2023" bg="#E1F5EE" />
+            sub="Computed from publications" bg="#E1F5EE" />
           <KPICard icon="🎯" label="Avg Impact Factor"
             value={kpis.avg_impact_factor}
-            sub="↑ 0.35 vs 2023" bg="#FCEBEB" />
+            sub={growthStr(g.impact_factor)} bg="#FCEBEB" />
         </div>
 
         {/* Charts Row */}

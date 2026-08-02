@@ -127,6 +127,13 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
     for p in pubs:
         quartile_count[p.quartile] += 1
 
+    from app.metrics import yoy_percent, yoy_delta, avg_if_by_year
+    pubs_growth    = yoy_percent(pubs_by_year)
+    cits_growth    = yoy_percent(cit_by_year)
+    if_by_year     = avg_if_by_year(pubs)
+    if_growth      = yoy_percent(if_by_year)
+    pubs_delta     = yoy_delta(pubs_by_year)
+
     areas = db.query(FacultyResearchArea).filter(
         FacultyResearchArea.faculty_id == faculty_id
     ).order_by(FacultyResearchArea.expertise_percent.desc()).all()
@@ -166,6 +173,12 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
             "h_index":             faculty.h_index,
             "i10_index":           faculty.i10_index,
             "avg_impact_factor":   avg_if,
+            "growth": {
+                "publications":      pubs_growth,
+                "publications_abs":  pubs_delta,
+                "citations":         cits_growth,
+                "impact_factor":     if_growth,
+            },
         },
         "publications_by_year": [
             {"year": y, "count": c}
