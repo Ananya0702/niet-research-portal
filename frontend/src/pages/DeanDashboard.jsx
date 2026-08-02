@@ -247,7 +247,7 @@ export default function DeanDashboard() {
                     style={{
                       display:"flex", alignItems:"center",
                       gap:5, marginBottom:4, cursor:"pointer",
-                      opacity: !deptId || deptId === d.dept_id
+                      opacity: !deptId || deptId === (departments.find(x => x.dept_code === d.dept) || {}).dept_id
                         ? 1 : 0.4,
                     }}>
                     <span style={{

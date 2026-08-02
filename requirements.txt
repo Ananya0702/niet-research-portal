@@ -10,6 +10,7 @@ pydantic
 scholarly
 beautifulsoup4
 requests
+python-multipart
 pandas
 scikit-learn
 rapidfuzz
