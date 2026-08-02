@@ -32,6 +32,10 @@ def get_my_profile(db: Session = Depends(get_db),
     if not faculty:
         raise HTTPException(status_code=404, detail="Not found")
 
+    pubs = db.query(Publication).filter(
+        Publication.faculty_id == faculty.faculty_id
+    ).all()
+
     dept_name = None
     dept_code = None
     school_name = None
@@ -73,8 +77,8 @@ def get_my_profile(db: Session = Depends(get_db),
         "h_index":           faculty.h_index,
         "i10_index":         faculty.i10_index,
         "research_score":    faculty.research_score,
-        "total_publications":faculty.total_publications,
-        "total_citations":   faculty.total_citations,
+        "total_publications":len(pubs),
+        "total_citations":   sum(p.citations_count or 0 for p in pubs),
     }
 
 @router.put("/me/profile")
@@ -107,13 +111,17 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
     current_year = datetime.now().year
     pubs_this_year = [p for p in pubs if p.year == current_year]
 
-    citations = db.query(CitationYearly).filter(
-        CitationYearly.faculty_id == faculty_id
-    ).order_by(CitationYearly.year).all()
+    # Citations & impact factor derived from the publication records
+    total_citations = sum(p.citations_count or 0 for p in pubs)
+    ifs = [p.impact_factor for p in pubs if p.impact_factor]
+    avg_if = round(sum(ifs) / len(ifs), 2) if ifs else 0
 
     pubs_by_year = defaultdict(int)
+    cit_by_year = defaultdict(int)
     for p in pubs:
         pubs_by_year[p.year] += 1
+        if p.year:
+            cit_by_year[p.year] += p.citations_count or 0
 
     quartile_count = defaultdict(int)
     for p in pubs:
@@ -147,25 +155,25 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
             "dept_id":           faculty.dept_id,
             "h_index":           faculty.h_index,
             "i10_index":         faculty.i10_index,
-            "avg_impact_factor": faculty.avg_impact_factor,
+            "avg_impact_factor": avg_if,
             "research_score":    faculty.research_score,
             "google_scholar_id": faculty.google_scholar_id,
         },
         "kpis": {
             "total_publications":  len(pubs),
             "publications_this_year": len(pubs_this_year),
-            "total_citations":     faculty.total_citations,
+            "total_citations":     total_citations,
             "h_index":             faculty.h_index,
             "i10_index":           faculty.i10_index,
-            "avg_impact_factor":   faculty.avg_impact_factor,
+            "avg_impact_factor":   avg_if,
         },
         "publications_by_year": [
             {"year": y, "count": c}
             for y, c in sorted(pubs_by_year.items())
         ],
         "citations_by_year": [
-            {"year": c.year, "count": c.citations_count}
-            for c in citations
+            {"year": y, "count": c}
+            for y, c in sorted(cit_by_year.items())
         ],
         "quartile_breakdown": [
             {"quartile": q, "count": cnt}
@@ -261,10 +269,11 @@ def get_my_analytics(db: Session = Depends(get_db),
         if p.ml_topic:
             topic_count[p.ml_topic] += 1
 
-    # Citations by year
-    citations = db.query(CitationYearly).filter(
-        CitationYearly.faculty_id == faculty_id
-    ).order_by(CitationYearly.year).all()
+    # Citations by year — derived from publication records
+    citations_by_year = defaultdict(int)
+    for p in pubs:
+        if p.year:
+            citations_by_year[p.year] += p.citations_count or 0
 
     # Impact factor distribution
     impact_factors = [p.impact_factor for p in pubs if p.impact_factor]
@@ -280,7 +289,7 @@ def get_my_analytics(db: Session = Depends(get_db),
             "q1_publications":    q1_count,
             "q1_percent":         q1_percent,
             "avg_impact_factor":  avg_if,
-            "total_citations":    sum(c.citations_count for c in citations),
+            "total_citations":    sum(p.citations_count or 0 for p in pubs),
             "years_active":       len(pubs_by_year),
         },
         "publications_by_year": [
@@ -289,8 +298,8 @@ def get_my_analytics(db: Session = Depends(get_db),
         ],
         "quartile_trend":    quartile_trend,
         "citations_by_year": [
-            {"year": c.year, "count": c.citations_count}
-            for c in citations
+            {"year": y, "count": c}
+            for y, c in sorted(citations_by_year.items())
         ],
         "indexing_breakdown": [
             {"indexing": k, "count": v}
@@ -395,11 +404,11 @@ def download_excel_report(db: Session = Depends(get_db),
         ("PhD Holder",        "Yes" if faculty.is_phd else "No"),
         ("",                  ""),
         ("RESEARCH METRICS",  ""),
-        ("Total Publications",faculty.total_publications or len(pubs)),
-        ("Total Citations",   faculty.total_citations),
+        ("Total Publications",len(pubs)),
+        ("Total Citations",   sum(p.citations_count or 0 for p in pubs)),
         ("h-index",           faculty.h_index),
         ("i10-index",         faculty.i10_index),
-        ("Avg Impact Factor", faculty.avg_impact_factor),
+        ("Avg Impact Factor", round(sum((p.impact_factor or 0) for p in pubs if p.impact_factor) / len([p for p in pubs if p.impact_factor]), 2) if any(p.impact_factor for p in pubs) else 0),
         ("Research Score",    faculty.research_score),
     ]
 

@@ -89,7 +89,7 @@ def admin_dashboard(db: Session = Depends(get_db),
     total_faculty   = db.query(Faculty).filter(Faculty.is_active == True).count()
     total_pubs      = db.query(Publication).count()
     pubs_this_year  = db.query(Publication).filter(Publication.year == 2024).count()
-    total_cits      = db.query(func.sum(CitationYearly.citations_count)).scalar() or 0
+    total_cits      = db.query(func.sum(Publication.citations_count)).scalar() or 0
     total_projects  = db.query(Project).count()
     total_patents   = db.query(Patent).count()
     total_depts     = db.query(Department).count()
@@ -435,7 +435,7 @@ def get_faculty_details(db: Session = Depends(get_db),
             "is_phd":       f.is_phd,
             "h_index":      f.h_index or 0,
             "total_publications": len(pub_list),
-            "total_citations":    f.total_citations or 0,
+            "total_citations":    sum(pd.get("total_citations") or 0 for pd in pub_list),
             "publications": pub_list,
         })
 

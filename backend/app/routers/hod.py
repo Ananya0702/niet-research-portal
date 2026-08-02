@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.database import get_db
-from app.models import Faculty, Publication, CitationYearly, Project, Patent, Achievement, Department, School
+from app.models import Faculty, Publication, Project, Patent, Achievement, Department, School
 from app.routers.auth import get_current_faculty
 from collections import defaultdict
 from datetime import datetime
@@ -62,8 +61,8 @@ def get_hod_dashboard(db: Session = Depends(get_db),
 
     pubs_this_year = [p for p in all_pubs if p.year == datetime.now().year]
 
-    # Total citations from sync'd faculty.total_citations
-    total_citations = sum(f.total_citations or 0 for f in all_faculty)
+    # Total citations derived from publication records
+    total_citations = sum(p.citations_count or 0 for p in all_pubs)
 
     # Publications by year (dept level)
     pubs_by_year = defaultdict(int)
@@ -93,7 +92,10 @@ def get_hod_dashboard(db: Session = Depends(get_db),
     top_faculty = []
     for f in all_faculty:
         pub_count = len([p for p in all_pubs if p.faculty_id == f.faculty_id])
-        fac_citations = f.total_citations or 0
+        fac_citations = sum(
+            p.citations_count or 0 for p in all_pubs
+            if p.faculty_id == f.faculty_id
+        )
         top_faculty.append({
             "faculty_id":    f.faculty_id,
             "name":          f.name,
@@ -135,13 +137,11 @@ def get_hod_dashboard(db: Session = Depends(get_db),
         Publication.faculty_id.in_(faculty_ids)
     ).order_by(Publication.year.desc()).limit(5).all()
 
-    # Citations by year for dept
+    # Citations by year for dept — derived from publication records
     dept_citations_by_year = defaultdict(int)
-    all_citations = db.query(CitationYearly).filter(
-        CitationYearly.faculty_id.in_(faculty_ids)
-    ).all()
-    for c in all_citations:
-        dept_citations_by_year[c.year] += c.citations_count
+    for p in all_pubs:
+        if p.year:
+            dept_citations_by_year[p.year] += p.citations_count or 0
 
     return {
         "scope": {
@@ -227,9 +227,7 @@ def get_faculty_intelligence(db: Session = Depends(get_db),
     faculty_stats = []
     for f in all_faculty:
         f_pubs = [p for p in all_pubs if p.faculty_id == f.faculty_id]
-        f_cit  = db.query(func.sum(CitationYearly.citations_count)).filter(
-            CitationYearly.faculty_id == f.faculty_id
-        ).scalar() or 0
+        f_cit  = sum(p.citations_count or 0 for p in f_pubs)
 
         cur_yr = datetime.now().year
         pubs_2024 = len([p for p in f_pubs if p.year == cur_yr])

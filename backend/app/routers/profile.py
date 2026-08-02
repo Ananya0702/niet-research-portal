@@ -4,7 +4,7 @@ from sqlalchemy import or_, func
 from urllib.parse import urlparse
 from app.database import get_db
 from app.models import (
-    Faculty, Department, School, FacultyEducation, FacultyExperience,
+    Faculty, Department, School, Publication, FacultyEducation, FacultyExperience,
     FacultyCertification, FacultyAcademicLink, FacultySocialLink,
     FacultyResearchArea, Achievement,
 )
@@ -235,6 +235,13 @@ def get_full_profile(db: Session = Depends(get_db),
     fac = _get_faculty(db, current)
     dept_name, dept_code, school_name, school_id = _org_names(db, fac)
 
+    pubs = db.query(Publication).filter(
+        Publication.faculty_id == fac.faculty_id
+    ).all()
+    pub_citations = sum(p.citations_count or 0 for p in pubs)
+    pub_ifs = [p.impact_factor for p in pubs if p.impact_factor]
+    pub_avg_if = round(sum(pub_ifs) / len(pub_ifs), 2) if pub_ifs else 0
+
     education = [
         {
             "id": e.education_id, "degree": e.degree, "university": e.university,
@@ -320,10 +327,10 @@ def get_full_profile(db: Session = Depends(get_db),
         "languages_spoken":   fac.languages_spoken,
         "h_index":            fac.h_index,
         "i10_index":          fac.i10_index,
-        "avg_impact_factor":  fac.avg_impact_factor,
+        "avg_impact_factor":  pub_avg_if,
         "research_score":     fac.research_score,
-        "total_publications": fac.total_publications,
-        "total_citations":    fac.total_citations,
+        "total_publications": len(pubs),
+        "total_citations":    pub_citations,
         "education":          education,
         "experience":         experience,
         "achievements":       achievements,

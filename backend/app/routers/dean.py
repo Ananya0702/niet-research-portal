@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models import Faculty, Publication, CitationYearly, Project, Patent, Department, School
+from app.models import Faculty, Publication, Project, Patent, Department, School
 from app.routers.auth import get_current_faculty
 from collections import defaultdict
 from datetime import datetime
@@ -81,8 +81,8 @@ def get_dean_dashboard(
     cur_year = datetime.now().year
     pubs_this_year = [p for p in all_pubs if p.year == cur_year]
 
-    # Total citations from sync'd faculty.total_citations
-    total_citations = sum(f.total_citations or 0 for f in all_faculty)
+    # Total citations derived from publication records
+    total_citations = sum(p.citations_count or 0 for p in all_pubs)
 
     # Publications by year
     pubs_by_year = defaultdict(int)
@@ -90,13 +90,11 @@ def get_dean_dashboard(
         if p.year:
             pubs_by_year[p.year] += 1
 
-    # Citations by year — from CitationYearly
-    all_citations = db.query(CitationYearly).filter(
-        CitationYearly.faculty_id.in_(faculty_ids)
-    ).all() if faculty_ids else []
+    # Citations by year — derived from publication records
     citations_by_year = defaultdict(int)
-    for c in all_citations:
-        citations_by_year[c.year] += c.citations_count
+    for p in all_pubs:
+        if p.year:
+            citations_by_year[p.year] += p.citations_count or 0
 
     # Quartile breakdown
     quartile_count = defaultdict(int)
@@ -126,7 +124,10 @@ def get_dean_dashboard(
         if not f.dept_id:
             continue
         pub_count = len([p for p in all_pubs if p.faculty_id == f.faculty_id])
-        fac_cit   = f.total_citations or 0
+        fac_cit   = sum(
+            p.citations_count or 0 for p in all_pubs
+            if p.faculty_id == f.faculty_id
+        )
         dept = next((d for d in school_depts if d.dept_id == f.dept_id), None)
         top_faculty.append({
             "faculty_id":     f.faculty_id,
@@ -146,7 +147,7 @@ def get_dean_dashboard(
             continue
         dept_faculty = [f for f in all_faculty if f.dept_id == dept.dept_id]
         dept_pubs    = [p for p in all_pubs if p.faculty_id in [df.faculty_id for df in dept_faculty]]
-        dept_cit     = sum(f.total_citations or 0 for f in dept_faculty)
+        dept_cit     = sum(p.citations_count or 0 for p in dept_pubs)
         q1_count = len([p for p in dept_pubs if p.quartile == "Q1"])
         score = round(
             q1_count * 4 +
