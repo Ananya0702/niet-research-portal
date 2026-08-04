@@ -41,11 +41,17 @@ const SOURCE_OPTIONS = [
 ];
 
 const SOURCE_BADGE_STYLE = {
-  google_scholar: { bg:"#EEEDFE", color:P, label:"Scholar" },
-  orcid:          { bg:"#E6F1FB", color:"#0C447C", label:"ORCID" },
-  scopus:         { bg:"#FAEEDA", color:"#633806", label:"Scopus" },
+  google_scholar: { bg:"#E6F1FB", color:"#0C447C", label:"Scholar" },
+  orcid:          { bg:"#EEEDFE", color:P, label:"ORCID" },
+  scopus:         { bg:"#EAF3DE", color:"#27500A", label:"Scopus" },
   manual:         { bg:"#F0F0F5", color:"#666", label:"Manual" },
 };
+
+const SOURCE_CARDS = [
+  { key:"google_scholar", label:"Google Scholar", icon:"🎓", bg:"#E6F1FB", color:"#0C447C" },
+  { key:"scopus",         label:"Scopus",         icon:"📘", bg:"#EAF3DE", color:"#27500A" },
+  { key:"orcid",          label:"ORCID",          icon:"🆔", bg:"#EEEDFE", color:P },
+];
 
 function SourceBadges({ sources, source_platform }) {
   const list = (sources || []).length > 0
@@ -257,6 +263,30 @@ export default function Publications() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Source summary cards (clickable to filter) */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, padding:"10px 16px 0" }}>
+        {SOURCE_CARDS.map(sc => {
+          const active = source === sc.key;
+          const n = (counts.sources || {})[sc.key] || 0;
+          return (
+            <button key={sc.key} onClick={()=>{ setSource(active ? "all" : sc.key); setPage(1); }} style={{
+              background: active ? sc.color : "#fff",
+              border: active ? `1px solid ${sc.color}` : "1px solid #eee",
+              borderRadius:12, padding:"10px 14px", cursor:"pointer", textAlign:"left",
+              display:"flex", alignItems:"center", gap:10, transition:"all 0.15s",
+              color: active ? "#fff" : "#1a1a1a",
+            }}>
+              <div style={{ width:34, height:34, borderRadius:9, background: active ? "rgba(255,255,255,0.18)" : sc.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>{sc.icon}</div>
+              <div>
+                <div style={{ fontSize:11, color: active ? "rgba(255,255,255,0.85)" : "#888" }}>{sc.label}</div>
+                <div style={{ fontSize:18, fontWeight:600, lineHeight:1.2 }}>{n} Publications</div>
+              </div>
+              {active && <span style={{ marginLeft:"auto", fontSize:11, fontWeight:600, color:"#fff" }}>✓</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Scope Toolbar + School/Department labels */}

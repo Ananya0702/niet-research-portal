@@ -13,12 +13,23 @@ SUPPORTED_SOURCES = ("all", "manual", "google_scholar", "orcid", "scopus")
 
 
 def apply_source_filter(db, query, source):
-    """Apply a platform filter to a Publication query."""
+    """Apply a platform filter to a Publication query.
+
+    "manual" matches publications with no provenance row and whose legacy
+    source_platform is NULL/empty (i.e. entered directly in the portal).
+    """
     if not source or source == "all":
         return query
     sub = db.query(PublicationSource.pub_id).filter(
         PublicationSource.platform == source
     ).subquery()
+    if source == "manual":
+        return query.outerjoin(sub, sub.c.pub_id == Publication.pub_id).filter(
+            sub.c.pub_id.is_(None),
+            or_(Publication.source_platform.is_(None),
+                Publication.source_platform == "",
+                Publication.source_platform == "manual"),
+        )
     return query.outerjoin(sub, sub.c.pub_id == Publication.pub_id).filter(
         or_(sub.c.pub_id.isnot(None), Publication.source_platform == source)
     )

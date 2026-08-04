@@ -496,6 +496,23 @@ def get_publication_counts(
             Faculty.school_id == school_id,
         ))
 
+    # Per-source counts within the current scope (independent of the
+    # selected source filter) so the summary cards can be rendered.
+    base = db.query(Publication).join(Faculty)
+    if fac_ids:
+        base = base.filter(Publication.faculty_id.in_(fac_ids))
+    if current["role"] == "admin" and scope == "school" and school_id:
+        dept_ids_in = [d.dept_id for d in db.query(Department.dept_id)
+                       .filter(Department.school_id == school_id).all()]
+        base = base.filter(or_(
+            Faculty.dept_id.in_(dept_ids_in),
+            Faculty.school_id == school_id,
+        ))
+
+    source_counts = {}
+    for key in ("google_scholar", "orcid", "scopus", "manual"):
+        source_counts[key] = apply_source_filter(db, base, key).count()
+
     if source and source != "all":
         query = apply_source_filter(db, query, source)
 
@@ -509,6 +526,7 @@ def get_publication_counts(
         "journal": journal + unclassified,
         "conference": conference,
         "unclassified": unclassified,
+        "sources": source_counts,
     }
 
 

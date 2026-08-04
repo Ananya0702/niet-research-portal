@@ -149,7 +149,7 @@ def _do_sync(platform: str, faculty, db: Session) -> dict:
             skipped_count += 1
             continue
 
-        existing = _find_existing(by_doi, by_title, rec)
+        existing = _find_existing(by_doi, by_title, rec, platform, src_by_pub)
 
         if existing is not None:
             updated_count += _merge_into(
@@ -289,10 +289,22 @@ def _norm_doi(doi: str) -> str:
     return doi.strip().lower().replace("https://doi.org/", "").replace("http://dx.doi.org/", "")
 
 
-def _find_existing(by_doi, by_title, rec):
-    """Merge priority: DOI → normalized title (→ year check)."""
+def _pub_has_platform(p, platform, src_by_pub):
+    """True if this pub already carries provenance for the given platform."""
+    if p.source_platform == platform:
+        return True
+    return platform in (src_by_pub.get(p.pub_id) or {})
+
+
+def _find_existing(by_doi, by_title, rec, platform, src_by_pub):
+    """Merge priority: DOI → normalized title (→ year check).
+
+    Only matches publications that already belong to the same platform, so
+    each platform's data stays in its own separate publication records.
+    """
     if rec.doi:
-        matches = by_doi.get(_norm_doi(rec.doi)) or []
+        matches = [m for m in (by_doi.get(_norm_doi(rec.doi)) or [])
+                   if _pub_has_platform(m, platform, src_by_pub)]
         for m in matches:
             if _title_similar(m.title, rec.title):
                 return m
@@ -300,7 +312,8 @@ def _find_existing(by_doi, by_title, rec):
             return matches[0]
 
     key = rec.title.strip().lower()[:80]
-    matches = by_title.get(key) or []
+    matches = [m for m in (by_title.get(key) or [])
+               if _pub_has_platform(m, platform, src_by_pub)]
     if not matches:
         return None
     # prefer a same-year title match
