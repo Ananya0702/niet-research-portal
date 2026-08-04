@@ -314,6 +314,10 @@ CONFERENCE_INDICATORS = [
     "ieee conference", "springer conference", "elsevier conference",
     "acm conference", "int. symposium", "international symposium",
     "springer berlin", "crc press", "aip conference",
+    "ieee international conference", "ieee intl conf", "ieee int. conf",
+    "ieee symposium", "ieee international symposium", "ieee int. symp",
+    "ieee global communications", "ieee region", "ieee convention",
+    "ieee world congress", "ieee technology conference", "ieee india",
 ]
 JOURNAL_INDICATORS = [
     "journal", "ieee access", "nature", "elsevier", "springer",
@@ -325,15 +329,46 @@ JOURNAL_INDICATORS = [
     "remotesensing", "sustainability", "polymers",
 ]
 
+# Journal names that contain conference-like words and must win the first pass.
+JOURNAL_PRIORITY = [
+    "proceedings of the ieee", "ieee reviews", "ieee access",
+    "ieee transactions on", "ieee journal of", "ieee sensors journal",
+    "ieee internet of things journal", "ieee communications magazine",
+    "ieee wireless communications magazine", "ieee network",
+    "acm computing surveys", "acm computing", "acm transactions",
+]
+
+
 def classify_publication_type(title: str, journal_name: str) -> str:
     venue = (journal_name or "").lower().strip()
     combined = f"{title} {journal_name}".lower()
+
+    # Known journal phrases that contain "proceedings"/"conference"-like tokens.
+    for ind in JOURNAL_PRIORITY:
+        if ind in venue:
+            return "Journal"
+
+    # IEEE venues that are definitely conferences regardless of title.
+    if "ieee" in venue:
+        for ind in ("conference", "symposium", "workshop", "proceedings",
+                    "int. conf", "intl", "international conference",
+                    "congress", "convention", "world congress", "global communications"):
+            if ind in venue:
+                return "Conference"
+
     for ind in CONFERENCE_INDICATORS:
         if ind in venue:
             return "Conference"
     for ind in JOURNAL_INDICATORS:
         if ind in venue:
             return "Journal"
+    for ind in CONFERENCE_INDICATORS:
+        if ind in combined:
+            return "Conference"
+    for ind in JOURNAL_INDICATORS:
+        if ind in combined:
+            return "Journal"
+    return "Journal"
     for ind in CONFERENCE_INDICATORS:
         if ind in combined:
             return "Conference"
