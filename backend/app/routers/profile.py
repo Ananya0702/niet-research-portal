@@ -239,8 +239,8 @@ def get_full_profile(db: Session = Depends(get_db),
         Publication.faculty_id == fac.faculty_id
     ).all()
     pub_citations = sum(p.citations_count or 0 for p in pubs)
-    pub_ifs = [p.impact_factor for p in pubs if p.impact_factor]
-    pub_avg_if = round(sum(pub_ifs) / len(pub_ifs), 2) if pub_ifs else 0
+    from app.metrics import avg_if
+    pub_avg_if = avg_if(pubs, fallback=fac.avg_impact_factor)
 
     education = [
         {

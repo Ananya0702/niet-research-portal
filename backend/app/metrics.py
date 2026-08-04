@@ -34,3 +34,13 @@ def avg_if_by_year(pubs):
         year: round(sum(vals) / len(vals), 2)
         for year, vals in sorted(per_year.items())
     }
+
+
+def avg_if(pubs, fallback=0):
+    """Average impact factor from publication records. When no publication has a
+    real impact factor, fall back to the synced value stored on the faculty
+    record (fallback) so the metric is never misreported as zero."""
+    ifs = [p.impact_factor for p in pubs if p.impact_factor]
+    if ifs:
+        return round(sum(ifs) / len(ifs), 2)
+    return fallback or 0

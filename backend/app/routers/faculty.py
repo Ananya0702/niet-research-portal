@@ -113,8 +113,8 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
 
     # Citations & impact factor derived from the publication records
     total_citations = sum(p.citations_count or 0 for p in pubs)
-    ifs = [p.impact_factor for p in pubs if p.impact_factor]
-    avg_if = round(sum(ifs) / len(ifs), 2) if ifs else 0
+    from app.metrics import avg_if
+    avg_if = avg_if(pubs, fallback=faculty.avg_impact_factor)
 
     pubs_by_year = defaultdict(int)
     cit_by_year = defaultdict(int)
@@ -242,6 +242,7 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
 def get_my_analytics(db: Session = Depends(get_db),
                      current=Depends(get_current_faculty)):
     faculty_id = current["faculty_id"]
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
 
     pubs = db.query(Publication).filter(
         Publication.faculty_id == faculty_id
@@ -289,8 +290,8 @@ def get_my_analytics(db: Session = Depends(get_db),
             citations_by_year[p.year] += p.citations_count or 0
 
     # Impact factor distribution
-    impact_factors = [p.impact_factor for p in pubs if p.impact_factor]
-    avg_if = round(sum(impact_factors) / len(impact_factors), 2) if impact_factors else 0
+    from app.metrics import avg_if
+    avg_if = avg_if(pubs, fallback=faculty.avg_impact_factor if faculty else 0)
 
     # Q1 percentage
     q1_count = len([p for p in pubs if p.quartile == "Q1"])
@@ -408,6 +409,8 @@ def download_excel_report(db: Session = Depends(get_db),
 
     ws1.append([])
 
+    from app.metrics import avg_if as _avg_if
+    avg_if = _avg_if(pubs, fallback=faculty.avg_impact_factor)
     info_rows = [
         ("Name",              faculty.name),
         ("Designation",       faculty.designation),
@@ -421,7 +424,7 @@ def download_excel_report(db: Session = Depends(get_db),
         ("Total Citations",   sum(p.citations_count or 0 for p in pubs)),
         ("h-index",           faculty.h_index),
         ("i10-index",         faculty.i10_index),
-        ("Avg Impact Factor", round(sum((p.impact_factor or 0) for p in pubs if p.impact_factor) / len([p for p in pubs if p.impact_factor]), 2) if any(p.impact_factor for p in pubs) else 0),
+        ("Avg Impact Factor", avg_if if avg_if else (faculty.avg_impact_factor or 0)),
         ("Research Score",    faculty.research_score),
     ]
 
