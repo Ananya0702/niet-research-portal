@@ -38,6 +38,8 @@ class FacultyCreate(BaseModel):
     is_phd:            bool = False
     joining_year:      Optional[int] = None
     google_scholar_id: Optional[str] = None
+    orcid_id:          Optional[str] = None
+    scopus_author_id:  Optional[str] = None
 
 class SchoolCreate(BaseModel):
     school_name: str
@@ -169,10 +171,120 @@ def get_all_faculty(db: Session = Depends(get_db),
             "is_phd":            f.is_phd,
             "joining_year":      f.joining_year,
             "google_scholar_id": f.google_scholar_id,
+            "orcid_id":          f.orcid_id,
+            "scopus_author_id":  f.scopus_author_id,
+            "scholar_connected": f.scholar_connected,
+            "orcid_connected":   f.orcid_connected,
+            "scopus_connected":  f.scopus_connected,
+            "scholar_sync_status": f.scholar_sync_status,
+            "orcid_sync_status":   f.orcid_sync_status,
+            "scopus_sync_status":  f.scopus_sync_status,
+            "last_scholar_sync":   f.last_scholar_sync.isoformat() if f.last_scholar_sync else None,
+            "last_orcid_sync":     f.last_orcid_sync.isoformat() if f.last_orcid_sync else None,
+            "last_scopus_sync":    f.last_scopus_sync.isoformat() if f.last_scopus_sync else None,
             "is_active":         f.is_active,
         }
         for f in faculty
     ]
+
+@router.get("/faculty/platform-status/{faculty_id}")
+def faculty_platform_status(faculty_id: int, db: Session = Depends(get_db),
+                            current=Depends(get_current_admin)):
+    """Aggregate research-platform connection status for one faculty member."""
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not faculty:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    from app.models import PublicationSource
+    platform_pubs = {}
+    rows = db.query(PublicationSource.platform, func.count(PublicationSource.id)).group_by(
+        PublicationSource.platform
+    ).join(Publication, PublicationSource.pub_id == Publication.pub_id).filter(
+        Publication.faculty_id == faculty_id
+    ).all()
+    for plat, cnt in rows:
+        platform_pubs[plat] = cnt
+
+    return {
+        "faculty_id": faculty.faculty_id,
+        "platforms": [
+            {
+                "platform":       "google_scholar",
+                "label":          "Google Scholar",
+                "connected":      bool(faculty.scholar_connected),
+                "sync_status":    faculty.scholar_sync_status,
+                "last_sync":      faculty.last_scholar_sync.isoformat() if faculty.last_scholar_sync else None,
+                "publications":   platform_pubs.get("google_scholar", 0),
+                "account_id":     faculty.google_scholar_id,
+            },
+            {
+                "platform":       "orcid",
+                "label":          "ORCID",
+                "connected":      bool(faculty.orcid_connected),
+                "sync_status":    faculty.orcid_sync_status,
+                "last_sync":      faculty.last_orcid_sync.isoformat() if faculty.last_orcid_sync else None,
+                "publications":   platform_pubs.get("orcid", 0),
+                "account_id":     faculty.orcid_id,
+            },
+            {
+                "platform":       "scopus",
+                "label":          "Scopus",
+                "connected":      bool(faculty.scopus_connected),
+                "sync_status":    faculty.scopus_sync_status,
+                "last_sync":      faculty.last_scopus_sync.isoformat() if faculty.last_scopus_sync else None,
+                "publications":   platform_pubs.get("scopus", 0),
+                "account_id":     faculty.scopus_author_id,
+            },
+        ],
+    }
+
+
+@router.post("/faculty/sync/{faculty_id}/{platform}")
+def admin_force_sync(faculty_id: int, platform: str,
+                     db: Session = Depends(get_db),
+                     current=Depends(get_current_admin)):
+    """Admin-triggered sync for a faculty member on a given platform."""
+    if platform not in ("google_scholar", "orcid", "scopus"):
+        raise HTTPException(status_code=400, detail="Unsupported platform")
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not faculty:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+
+    from app.routers.sync import _do_sync, ProviderError
+    id_field = {
+        "google_scholar": "google_scholar_id",
+        "orcid": "orcid_id",
+        "scopus": "scopus_author_id",
+    }[platform]
+    account_id = getattr(faculty, id_field, None)
+    if not account_id:
+        raise HTTPException(status_code=400, detail=f"No {platform} ID set for this faculty")
+
+    try:
+        result = _do_sync(platform, faculty, db)
+        return result
+    except ProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/faculty/sync-status/{faculty_id}")
+def faculty_sync_status(faculty_id: int, db: Session = Depends(get_db),
+                        current=Depends(get_current_admin)):
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not faculty:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {
+        "faculty_id": faculty.faculty_id,
+        "scholar_sync_status": faculty.scholar_sync_status,
+        "orcid_sync_status":   faculty.orcid_sync_status,
+        "scopus_sync_status":  faculty.scopus_sync_status,
+        "last_scholar_sync":   faculty.last_scholar_sync.isoformat() if faculty.last_scholar_sync else None,
+        "last_orcid_sync":     faculty.last_orcid_sync.isoformat() if faculty.last_orcid_sync else None,
+        "last_scopus_sync":    faculty.last_scopus_sync.isoformat() if faculty.last_scopus_sync else None,
+    }
+
 
 @router.post("/faculty")
 def create_faculty(data: FacultyCreate, db: Session = Depends(get_db),
@@ -191,6 +303,8 @@ def create_faculty(data: FacultyCreate, db: Session = Depends(get_db),
         is_phd            = data.is_phd,
         joining_year      = data.joining_year,
         google_scholar_id = data.google_scholar_id,
+        orcid_id          = data.orcid_id,
+        scopus_author_id  = data.scopus_author_id,
         is_active         = True,
         h_index           = 0,
         i10_index         = 0,
@@ -217,7 +331,8 @@ def update_faculty(faculty_id: int, data: dict,
         raise HTTPException(status_code=404, detail="Faculty not found")
 
     allowed = ["name","designation","dept_id","school_id","is_phd",
-               "joining_year","google_scholar_id","role","is_active"]
+               "joining_year","google_scholar_id","orcid_id",
+               "scopus_author_id","role","is_active"]
     for key in allowed:
         if key in data:
             setattr(faculty, key, data[key])
@@ -440,6 +555,11 @@ def get_faculty_details(db: Session = Depends(get_db),
                 pd["citations_by_year"] = []
                 pd["total_citations"] = p.citations_count or 0
 
+            from app.source_filter import pub_sources_by_pub
+            pd["sources"] = pub_sources_by_pub(db, [p.pub_id]).get(p.pub_id, [])
+            pd["source_platform"] = p.source_platform or "manual"
+            pd["external_url"] = p.external_url or ""
+
             pub_list.append(pd)
 
         result.append({
@@ -455,6 +575,15 @@ def get_faculty_details(db: Session = Depends(get_db),
             "h_index":      f.h_index or 0,
             "total_publications": len(pub_list),
             "total_citations":    sum(pd.get("total_citations") or 0 for pd in pub_list),
+            "google_scholar_id":  f.google_scholar_id,
+            "orcid_id":           f.orcid_id,
+            "scopus_author_id":   f.scopus_author_id,
+            "scholar_connected":  bool(f.scholar_connected),
+            "orcid_connected":    bool(f.orcid_connected),
+            "scopus_connected":   bool(f.scopus_connected),
+            "last_scholar_sync":  f.last_scholar_sync.isoformat() if f.last_scholar_sync else None,
+            "last_orcid_sync":    f.last_orcid_sync.isoformat() if f.last_orcid_sync else None,
+            "last_scopus_sync":   f.last_scopus_sync.isoformat() if f.last_scopus_sync else None,
             "publications": pub_list,
         })
 

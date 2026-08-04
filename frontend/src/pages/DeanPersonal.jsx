@@ -183,7 +183,7 @@ export default function DeanPersonal() {
                   <tr><td colSpan={6} style={{
                     padding:"30px", textAlign:"center", color:"#aaa", fontSize:13,
                   }}>
-                    No publications yet. Click Sync Google Scholar to import your papers.
+                    No publications yet. Sync Google Scholar, ORCID, or Scopus to import your papers.
                   </td></tr>
                 ) : recent_publications.map(p => (
                   <tr key={p.pub_id}>
@@ -227,7 +227,7 @@ export default function DeanPersonal() {
               {research_areas.length === 0 ? (
                 <div style={{ color:"#aaa", fontSize:12, padding:"20px 0",
                   textAlign:"center" }}>
-                  Sync Scholar to populate research areas
+                  Sync your research platforms to populate research areas
                 </div>
               ) : research_areas.slice(0,6).map((a, i) => (
                 <div key={i} style={{ marginBottom:10 }}>

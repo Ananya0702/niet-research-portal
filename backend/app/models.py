@@ -36,6 +36,7 @@ class Faculty(Base):
     is_phd            = Column(Boolean, default=False)
     joining_year      = Column(Integer)
     google_scholar_id = Column(String(50))
+    scopus_author_id  = Column(String(50))
     h_index           = Column(Float, default=0)
     i10_index         = Column(Float, default=0)
     avg_impact_factor = Column(Float, default=0)
@@ -62,6 +63,17 @@ class Faculty(Base):
     research_interests = Column(Text)
     biography          = Column(Text)
     languages_spoken   = Column(String(255))
+
+    # ── Research platform sync state ──
+    scholar_connected    = Column(Boolean, default=False)
+    orcid_connected      = Column(Boolean, default=False)
+    scopus_connected     = Column(Boolean, default=False)
+    scholar_sync_status  = Column(String(20), default="idle")   # idle | running | done | error
+    orcid_sync_status    = Column(String(20), default="idle")
+    scopus_sync_status   = Column(String(20), default="idle")
+    last_scholar_sync    = Column(DateTime, nullable=True)
+    last_orcid_sync      = Column(DateTime, nullable=True)
+    last_scopus_sync     = Column(DateTime, nullable=True)
 
     department     = relationship("Department", back_populates="faculty",
                                    foreign_keys=[dept_id])
@@ -97,6 +109,13 @@ class Publication(Base):
     ml_topic          = Column(String(100))
     publication_type  = Column(String(20))  # "Journal" or "Conference"
     abstract          = Column(Text)
+    authors           = Column(String(1000), nullable=True)
+
+    # ── Research platform provenance ──
+    source_platform   = Column(String(30), default="manual")  # google_scholar | orcid | scopus | manual
+    source_id         = Column(String(200), nullable=True)    # provider-native id (orcid work put-code, scopus eid, ...)
+    external_url      = Column(String(500), nullable=True)    # canonical link on the provider
+    sync_timestamp    = Column(DateTime, nullable=True)
     conference_name   = Column(String(300))
     conference_location = Column(String(200))
     publisher         = Column(String(200))
@@ -120,6 +139,17 @@ class Publication(Base):
     created_at        = Column(DateTime, server_default=func.now())
     updated_at        = Column(DateTime, onupdate=func.now())
     faculty           = relationship("Faculty", back_populates="publications")
+
+class PublicationSource(Base):
+    """Maps a publication to every research platform it was found on.
+    A single merged publication can be available on multiple platforms."""
+    __tablename__ = "publication_sources"
+    id              = Column(Integer, primary_key=True)
+    pub_id          = Column(Integer, ForeignKey("publications.pub_id"))
+    platform        = Column(String(30))   # google_scholar | orcid | scopus | manual
+    source_id       = Column(String(200), nullable=True)
+    external_url    = Column(String(500), nullable=True)
+    sync_timestamp  = Column(DateTime, nullable=True)
 
 class CitationYearly(Base):
     __tablename__ = "citations_yearly"

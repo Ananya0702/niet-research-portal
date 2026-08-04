@@ -85,7 +85,7 @@ def _completion(db, fac):
     personal_fields = [
         fac.name, fac.designation, fac.phone, fac.dob, fac.gender, fac.nationality,
         fac.employee_id, fac.joining_year, fac.qualification, fac.bio,
-        fac.google_scholar_id, fac.orcid_id,
+        fac.google_scholar_id, fac.orcid_id, fac.scopus_author_id,
     ]
     prof_fields = [
         fac.current_position, fac.office_address, fac.institution, fac.specialization,
@@ -134,6 +134,7 @@ class PersonalUpdate(BaseModel):
     bio:               Optional[str] = None
     google_scholar_id: Optional[str] = None
     orcid_id:          Optional[str] = None
+    scopus_author_id:  Optional[str] = None
 
 
 class ProfessionalUpdate(BaseModel):
@@ -310,6 +311,27 @@ def get_full_profile(db: Session = Depends(get_db),
         "joining_year":       fac.joining_year,
         "google_scholar_id":  fac.google_scholar_id,
         "orcid_id":           fac.orcid_id,
+        "scopus_author_id":   fac.scopus_author_id,
+        "platform_status": {
+            "google_scholar": {
+                "connected":  bool(fac.scholar_connected),
+                "sync_status": fac.scholar_sync_status,
+                "last_sync":  _iso(fac.last_scholar_sync),
+                "account_id": fac.google_scholar_id,
+            },
+            "orcid": {
+                "connected":  bool(fac.orcid_connected),
+                "sync_status": fac.orcid_sync_status,
+                "last_sync":  _iso(fac.last_orcid_sync),
+                "account_id": fac.orcid_id,
+            },
+            "scopus": {
+                "connected":  bool(fac.scopus_connected),
+                "sync_status": fac.scopus_sync_status,
+                "last_sync":  _iso(fac.last_scopus_sync),
+                "account_id": fac.scopus_author_id,
+            },
+        },
         "phone":              fac.phone,
         "dob":                _iso(fac.dob),
         "gender":             fac.gender,
@@ -788,6 +810,71 @@ def delete_academic_link(link_id: int, db: Session = Depends(get_db),
     db.delete(link)
     db.commit()
     return {"message": "Removed"}
+
+
+class VerifyRequest(BaseModel):
+    platform: str
+    account_id: str = ""
+
+
+@router.post("/verify-connection")
+def verify_platform_connection(data: VerifyRequest,
+                               db: Session = Depends(get_db),
+                               current=Depends(get_current_faculty)):
+    """Probe a research platform for the given account id and report live status."""
+    fac = _get_faculty(db, current)
+    platform = (data.platform or "").strip().lower()
+    account_id = (data.account_id or "").strip()
+
+    from app.providers import get_provider, ProviderError
+    try:
+        provider = get_provider(platform)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
+    if not provider.validate_id(account_id):
+        return {
+            "platform": platform,
+            "account_id": account_id,
+            "valid": False,
+            "connected": False,
+            "message": f"'{account_id}' is not a valid {platform} identifier.",
+            "records_found": 0,
+        }
+
+    # A full fetch is the most accurate connectivity check (also updates counts).
+    try:
+        result = provider.fetch(account_id)
+        connected = True
+        message = f"Connection verified — {result.total_fetched} work(s) found."
+    except ProviderError as e:
+        connected = False
+        message = str(e)
+        result = None
+    except Exception as e:
+        connected = False
+        message = f"Could not reach {platform}: {e}"
+
+    # Persist connection state on the faculty record
+    connected_attr = f"{platform}_connected"
+    status_attr = f"{platform}_sync_status"
+    if platform in ("google_scholar", "orcid", "scopus"):
+        if connected:
+            setattr(fac, connected_attr, True)
+            setattr(fac, status_attr, "done")
+        else:
+            setattr(fac, connected_attr, False)
+            setattr(fac, status_attr, "error")
+        db.commit()
+
+    return {
+        "platform": platform,
+        "account_id": account_id,
+        "valid": True,
+        "connected": connected,
+        "message": message,
+        "records_found": result.total_fetched if result else 0,
+    }
 
 
 # ── Social links (dynamic, database-driven) ─────────────────────────────────

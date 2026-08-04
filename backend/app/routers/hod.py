@@ -40,7 +40,8 @@ def _resolve_hod_scope(db, current):
 
 
 @router.get("/dashboard")
-def get_hod_dashboard(db: Session = Depends(get_db),
+def get_hod_dashboard(source: str = "all",
+                      db: Session = Depends(get_db),
                       current=Depends(get_current_faculty)):
 
     hod, school, dept = _resolve_hod_scope(db, current)
@@ -55,9 +56,13 @@ def get_hod_dashboard(db: Session = Depends(get_db),
     faculty_ids = [f.faculty_id for f in all_faculty]
 
     # All publications in dept
-    all_pubs = db.query(Publication).filter(
+    pubs_q = db.query(Publication).filter(
         Publication.faculty_id.in_(faculty_ids)
-    ).all()
+    )
+    if source and source != "all":
+        from app.source_filter import apply_source_filter
+        pubs_q = apply_source_filter(db, pubs_q, source)
+    all_pubs = pubs_q.all()
 
     pubs_this_year = [p for p in all_pubs if p.year == datetime.now().year]
 

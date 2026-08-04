@@ -153,6 +153,10 @@ export default function Profile() {
   const [linkBusy, setLinkBusy] = useState(false);
   const [scholarId, setScholarId] = useState("");
   const [scholarResult, setScholarResult] = useState(null);
+  const [orcidId, setOrcidId] = useState("");
+  const [orcidResult, setOrcidResult] = useState(null);
+  const [scopusId, setScopusId] = useState("");
+  const [scopusResult, setScopusResult] = useState(null);
   const [recentPubs, setRecentPubs] = useState([]);
   const photoRef = useRef(null);
   const certRef = useRef(null);
@@ -164,6 +168,8 @@ export default function Profile() {
       .then(res => {
         setProfile(res.data);
         setScholarId(res.data.google_scholar_id || "");
+        setOrcidId(res.data.orcid_id || "");
+        setScopusId(res.data.scopus_author_id || "");
       })
       .catch(() => showMsg("error", "Failed to load profile"))
       .finally(() => setLoading(false));
@@ -208,6 +214,7 @@ export default function Profile() {
         employee_id: profile.employee_id || "", joining_year: profile.joining_year || "",
         qualification: profile.qualification || "", bio: profile.bio || "",
         google_scholar_id: profile.google_scholar_id || "", orcid_id: profile.orcid_id || "",
+        scopus_author_id: profile.scopus_author_id || "",
       });
     } else {
       setForm({
@@ -404,6 +411,43 @@ export default function Profile() {
     }
   };
 
+  const saveOrcidId = async () => {
+    const ok = await run("save", () => API.put("/profile/personal", { orcid_id: orcidId.trim() }), "ORCID iD saved");
+    if (ok) await fetchProfile();
+  };
+  const syncOrcid = async () => {
+    setBusy("orcid");
+    setOrcidResult(null);
+    try {
+      const res = await API.post("/sync/orcid");
+      setOrcidResult(res.data);
+      showMsg("success", "ORCID sync complete");
+      await fetchProfile();
+    } catch (err) {
+      showMsg("error", err?.response?.data?.detail || "ORCID sync failed.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const saveScopusId = async () => {
+    const ok = await run("save", () => API.put("/profile/personal", { scopus_author_id: scopusId.trim() }), "Scopus Author ID saved");
+    if (ok) await fetchProfile();
+  };
+  const syncScopus = async () => {
+    setBusy("scopus");
+    setScopusResult(null);
+    try {
+      const res = await API.post("/sync/scopus");
+      setScopusResult(res.data);
+      showMsg("success", "Scopus sync complete");
+      await fetchProfile();
+    } catch (err) {
+      showMsg("error", err?.response?.data?.detail || "Scopus sync failed.");
+    } finally {
+      setBusy("");
+    }
+  };
+
   const renderField = (f) => {
     const val = acad.form[f.key];
     if (f.type === "textarea")
@@ -551,7 +595,7 @@ export default function Profile() {
                   {[
                     { key: "info", label: "Profile Info" },
                     { key: "metrics", label: "Research Metrics" },
-                    { key: "scholar", label: "Google Scholar" },
+                    { key: "scholar", label: "Research Platforms" },
                     { key: "academic", label: "Academic Identity" },
                   ].map(t => (
                     <div key={t.key} onClick={() => setTab(t.key)} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", color: tab === t.key ? P : "#888", borderBottom: tab === t.key ? `2px solid ${P}` : "2px solid transparent", transition: "all 0.15s" }}>{t.label}</div>
@@ -585,6 +629,7 @@ export default function Profile() {
                               ["Qualification", "qualification", "text"],
                               ["Google Scholar ID", "google_scholar_id", "text"],
                               ["ORCID ID", "orcid_id", "text"],
+                              ["Scopus Author ID", "scopus_author_id", "text"],
                             ].map(([label, key, type]) => (
                               <div key={key}>
                                 <label style={labelStyle}>{label} {key === "name" && <span style={{ color: "#E5484D" }}>*</span>}</label>
@@ -624,6 +669,7 @@ export default function Profile() {
                             ["Qualification", profile.qualification],
                             ["Google Scholar ID", profile.google_scholar_id],
                             ["ORCID ID", profile.orcid_id],
+                            ["Scopus Author ID", profile.scopus_author_id],
                           ].map(([label, val]) => (
                             <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
                               <div>
@@ -776,7 +822,10 @@ export default function Profile() {
                 {/* ── Google Scholar Tab ── */}
                 {tab === "scholar" && (
                   <div style={{ padding: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Google Scholar</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Research Platforms</div>
+
+                    {/* ── Google Scholar ── */}
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>🎓 Google Scholar</div>
                     <div style={{ background: profile.google_scholar_id ? "#EAF3DE" : "#FAEEDA", border: `1px solid ${profile.google_scholar_id ? "#27500A" : "#633806"}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 20 }}>{profile.google_scholar_id ? "✅" : "⚠️"}</span>
                       <div>
@@ -793,7 +842,7 @@ export default function Profile() {
                     </div>
                     <div style={{ marginBottom: 14 }}>
                       <button onClick={syncScholar} disabled={busy === "scholar" || !profile.google_scholar_id} style={{ padding: "8px 18px", background: "#0C447C", color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: profile.google_scholar_id ? "pointer" : "not-allowed", opacity: profile.google_scholar_id ? 1 : 0.5 }}>
-                        {busy === "scholar" ? "Syncing…" : "🔄 Sync Now"}
+                        {busy === "scholar" ? "Syncing…" : "🔄 Sync Google Scholar"}
                       </button>
                       {scholarResult && (
                         <div style={{ marginTop: 10, background: "#EAF3DE", border: "1px solid #27500A", borderRadius: 10, padding: "10px 14px", fontSize: 11, color: "#27500A", lineHeight: 1.7 }}>
@@ -801,6 +850,69 @@ export default function Profile() {
                         </div>
                       )}
                     </div>
+
+                    {/* ── ORCID ── */}
+                    <div style={{ borderTop: "1px solid #eee", paddingTop: 16, marginTop: 16 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>🆔 ORCID</div>
+                      <div style={{ background: profile.orcid_id ? "#EAF3DE" : "#FAEEDA", border: `1px solid ${profile.orcid_id ? "#27500A" : "#633806"}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 20 }}>{profile.orcid_id ? "✅" : "⚠️"}</span>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: profile.orcid_id ? "#27500A" : "#633806" }}>{profile.orcid_id ? "ORCID iD is set" : "ORCID iD not set"}</div>
+                          <div style={{ fontSize: 11, color: "#555" }}>{profile.orcid_id ? `iD: ${profile.orcid_id}` : "Set your ORCID iD to auto-import your works"}</div>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={labelStyle}>ORCID iD</label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input value={orcidId} onChange={e => setOrcidId(e.target.value)} style={{ flex: 1, ...inputStyle }} placeholder="e.g. 0000-0001-2345-6789" />
+                          <button onClick={saveOrcidId} disabled={busy === "save"} style={{ padding: "7px 16px", background: P, color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: "pointer" }}>Save iD</button>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 14 }}>
+                        <button onClick={syncOrcid} disabled={busy === "orcid" || !profile.orcid_id} style={{ padding: "8px 18px", background: "#0C447C", color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: profile.orcid_id ? "pointer" : "not-allowed", opacity: profile.orcid_id ? 1 : 0.5 }}>
+                          {busy === "orcid" ? "Syncing…" : "🔄 Sync ORCID"}
+                        </button>
+                        {orcidResult && (
+                          <div style={{ marginTop: 10, background: "#EAF3DE", border: "1px solid #27500A", borderRadius: 10, padding: "10px 14px", fontSize: 11, color: "#27500A", lineHeight: 1.7 }}>
+                            Sync complete — {orcidResult.new_publications || 0} new publication(s), {orcidResult.already_existed || 0} already existed.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Scopus ── */}
+                    <div style={{ borderTop: "1px solid #eee", paddingTop: 16, marginTop: 16 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>📘 Scopus</div>
+                      <div style={{ background: profile.scopus_author_id ? "#EAF3DE" : "#FAEEDA", border: `1px solid ${profile.scopus_author_id ? "#27500A" : "#633806"}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 20 }}>{profile.scopus_author_id ? "✅" : "⚠️"}</span>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: profile.scopus_author_id ? "#27500A" : "#633806" }}>{profile.scopus_author_id ? "Scopus Author ID is set" : "Scopus Author ID not set"}</div>
+                          <div style={{ fontSize: 11, color: "#555" }}>{profile.scopus_author_id ? `ID: ${profile.scopus_author_id}` : "Set your Scopus Author ID to auto-import your documents"}</div>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={labelStyle}>Scopus Author ID</label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input value={scopusId} onChange={e => setScopusId(e.target.value)} style={{ flex: 1, ...inputStyle }} placeholder="e.g. 7005103581" />
+                          <button onClick={saveScopusId} disabled={busy === "save"} style={{ padding: "7px 16px", background: P, color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: "pointer" }}>Save ID</button>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 14 }}>
+                        <button onClick={syncScopus} disabled={busy === "scopus" || !profile.scopus_author_id} style={{ padding: "8px 18px", background: "#0C447C", color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: profile.scopus_author_id ? "pointer" : "not-allowed", opacity: profile.scopus_author_id ? 1 : 0.5 }}>
+                          {busy === "scopus" ? "Syncing…" : "🔄 Sync Scopus"}
+                        </button>
+                        {scopusResult && (
+                          <div style={{ marginTop: 10, background: "#EAF3DE", border: "1px solid #27500A", borderRadius: 10, padding: "10px 14px", fontSize: 11, color: "#27500A", lineHeight: 1.7 }}>
+                            Sync complete — {scopusResult.new_publications || 0} new publication(s), {scopusResult.already_existed || 0} already existed.
+                          </div>
+                        )}
+                        {!scopusResult && !profile.scopus_author_id && (
+                          <div style={{ marginTop: 10, fontSize: 11, color: "#999" }}>Scopus sync requires an Elsevier API key configured by the administrator.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Metrics ── */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
                       {[
                         ["h-index", profile.h_index, P],
@@ -828,7 +940,7 @@ export default function Profile() {
                         ))}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11, color: "#999" }}>No publications yet. Run sync to pull them from Google Scholar.</div>
+                      <div style={{ fontSize: 11, color: "#999" }}>No publications yet. Run a sync to pull them from a research platform.</div>
                     )}
                   </div>
                 )}

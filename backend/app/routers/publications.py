@@ -4,12 +4,15 @@ from sqlalchemy import func, or_
 from app.database import get_db
 from app.models import Publication, Faculty, Department, School
 from app.routers.auth import get_current_faculty
+from app.source_filter import apply_source_filter, pub_sources_by_pub
 from pydantic import BaseModel
 from typing import Optional
 from app.routers.activity import log_activity
 from datetime import date, datetime
 
 router = APIRouter()
+
+SUPPORTED_SOURCES = ("all", "manual", "google_scholar", "orcid", "scopus")
 
 CONFERENCE_INDICATORS = [
     "conference", "proceedings", "workshop", "symposium", "icml", "cvpr",
@@ -181,7 +184,7 @@ class PublicationCreate(BaseModel):
     acceptance_date:   Optional[date] = None
 
 
-def _pub_to_dict(p, include_faculty=False):
+def _pub_to_dict(p, include_faculty=False, sources=None):
     d = {
         "pub_id":          p.pub_id,
         "faculty_id":      p.faculty_id,
@@ -218,6 +221,12 @@ def _pub_to_dict(p, include_faculty=False):
         "acceptance_date": p.acceptance_date.isoformat() if p.acceptance_date else "",
         "created_at":      p.created_at.isoformat() if p.created_at else "",
         "updated_at":      p.updated_at.isoformat() if p.updated_at else "",
+        # ── Research platform provenance ──
+        "source_platform":  p.source_platform or "manual",
+        "source_id":        p.source_id or "",
+        "external_url":     p.external_url or "",
+        "sync_timestamp":   p.sync_timestamp.isoformat() if p.sync_timestamp else "",
+        "sources":          sources or [],
     }
     if include_faculty and p.faculty:
         d["faculty_name"] = p.faculty.name
@@ -253,6 +262,7 @@ def get_publications(
     scope: str = "my",
     sort_by: str = "year",
     sort_dir: str = "desc",
+    source: str = "all",
     db: Session = Depends(get_db),
     current=Depends(get_current_faculty),
 ):
@@ -304,6 +314,9 @@ def get_publications(
     if dept_id:
         query = query.filter(Faculty.dept_id == dept_id)
 
+    if source and source != "all":
+        query = apply_source_filter(db, query, source)
+
     sort_col = getattr(Publication, sort_by, Publication.year)
     if sort_dir == "asc":
         query = query.order_by(sort_col.asc())
@@ -313,12 +326,18 @@ def get_publications(
     total = query.count()
     pubs = query.offset((page - 1) * per_page).limit(per_page).all()
 
+    # Attach platform provenance for badges
+    source_rows = pub_sources_by_pub(db, [p.pub_id for p in pubs])
+
     return {
         "total": total,
         "page": page,
         "per_page": per_page,
         "total_pages": max(1, (total + per_page - 1) // per_page),
-        "publications": [_pub_to_dict(p, include_faculty=True) for p in pubs],
+        "publications": [
+            _pub_to_dict(p, include_faculty=True, sources=source_rows.get(p.pub_id, []))
+            for p in pubs
+        ],
     }
 
 
@@ -460,6 +479,7 @@ def get_publication_counts(
     scope: str = "my",
     dept_id: Optional[int] = None,
     school_id: Optional[int] = None,
+    source: str = "all",
     db: Session = Depends(get_db),
     current=Depends(get_current_faculty),
 ):
@@ -475,6 +495,9 @@ def get_publication_counts(
             Faculty.dept_id.in_(dept_ids_in),
             Faculty.school_id == school_id,
         ))
+
+    if source and source != "all":
+        query = apply_source_filter(db, query, source)
 
     total = query.count()
     journal = query.filter(Publication.publication_type == "Journal").count()

@@ -32,9 +32,40 @@ const SCOPE_LABELS = {
   all: "All Publications",
 };
 
+const SOURCE_OPTIONS = [
+  { key:"all", label:"All Sources" },
+  { key:"manual", label:"📝 Manual" },
+  { key:"google_scholar", label:"🎓 Google Scholar" },
+  { key:"orcid", label:"🆔 ORCID" },
+  { key:"scopus", label:"📘 Scopus" },
+];
+
+const SOURCE_BADGE_STYLE = {
+  google_scholar: { bg:"#EEEDFE", color:P, label:"Scholar" },
+  orcid:          { bg:"#E6F1FB", color:"#0C447C", label:"ORCID" },
+  scopus:         { bg:"#FAEEDA", color:"#633806", label:"Scopus" },
+  manual:         { bg:"#F0F0F5", color:"#666", label:"Manual" },
+};
+
+function SourceBadges({ sources, source_platform }) {
+  const list = (sources || []).length > 0
+    ? sources.map(s => s.platform)
+    : (source_platform && source_platform !== "manual" ? [source_platform] : []);
+  if (list.length === 0) return <span style={{ fontSize:9, color:"#ccc" }}>—</span>;
+  return (
+    <div style={{ display:"flex", gap:3, flexWrap:"wrap", maxWidth:110 }}>
+      {list.map(pl => {
+        const s = SOURCE_BADGE_STYLE[pl] || SOURCE_BADGE_STYLE.manual;
+        return (
+          <span key={pl} title={`Available on ${s.label}`} style={{ fontSize:8, padding:"1px 5px", borderRadius:4, fontWeight:600, background:s.bg, color:s.color, whiteSpace:"nowrap" }}>{s.label}</span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Publications() {
-  const navigate = useNavigate();
-  const [pubs, setPubs] = useState([]);
+  const navigate = useNavigate();  const [pubs, setPubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -45,6 +76,7 @@ export default function Publications() {
   const [searchInput, setSearchInput] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ quartile:"", indexing:"", year_from:"", year_to:"" });
+  const [source, setSource] = useState("all");
   const [counts, setCounts] = useState({ total:0, journal:0, conference:0 });
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
@@ -127,12 +159,13 @@ export default function Publications() {
     if (filters.indexing) p.indexing = filters.indexing;
     if (filters.year_from) p.year_from = parseInt(filters.year_from);
     if (filters.year_to) p.year_to = parseInt(filters.year_to);
+    if (source && source !== "all") p.source = source;
     // Dean: pass dept_id filter when department selected
     if (userRole === "dean_rd" && selectedDeptId) p.dept_id = parseInt(selectedDeptId);
     // Admin: pass school_id/dept_id based on scope
     if (userRole === "admin" && scope === "department" && selectedDeptId) p.dept_id = parseInt(selectedDeptId);
     return p;
-  }, [page, perPage, activeTab, search, filters, scope, userRole, selectedDeptId]);
+  }, [page, perPage, activeTab, search, filters, scope, source, userRole, selectedDeptId]);
 
   const fetchPubs = useCallback(async () => {
     setLoading(true);
@@ -148,12 +181,13 @@ export default function Publications() {
   const fetchCounts = useCallback(async () => {
     try {
       const params = { scope };
+      if (source && source !== "all") params.source = source;
       if (userRole === "dean_rd" && selectedDeptId) params.dept_id = parseInt(selectedDeptId);
       if (userRole === "admin" && scope === "department" && selectedDeptId) params.dept_id = parseInt(selectedDeptId);
       const r = await getPubCounts(params);
       setCounts(r.data);
     } catch {}
-  }, [scope, userRole, selectedDeptId]);
+  }, [scope, source, userRole, selectedDeptId]);
 
   useEffect(() => { fetchPubs(); fetchCounts(); }, [fetchPubs, fetchCounts]);
 
@@ -165,10 +199,11 @@ export default function Publications() {
 
   const clearFilters = () => {
     setFilters({ quartile:"", indexing:"", year_from:"", year_to:"" });
+    setSource("all");
     setSearch(""); setSearchInput(""); setPage(1);
   };
 
-  const hasFilters = filters.quartile || filters.indexing || filters.year_from || filters.year_to || search;
+  const hasFilters = filters.quartile || filters.indexing || filters.year_from || filters.year_to || search || source !== "all";
 
   const handleAdd = async (e) => {
     e.preventDefault(); setSaving(true);
@@ -306,6 +341,9 @@ export default function Publications() {
             <option value="">All Quartiles</option>
             {["Q1","Q2","Q3","Q4"].map(q => <option key={q}>{q}</option>)}
           </select>
+          <select value={source} onChange={e=>{setSource(e.target.value); setPage(1);}} style={{ padding:"5px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none", fontWeight: source!=="all"?600:400 }}>
+            {SOURCE_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
           <select value={filters.indexing} onChange={e=>setFilters({...filters, indexing:e.target.value})} style={{ padding:"5px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:11, outline:"none" }}>
             <option value="">All Indexing</option>
             {["SCI","SCIE","Scopus","UGC Care","None"].map(i => <option key={i}>{i}</option>)}
@@ -322,16 +360,16 @@ export default function Publications() {
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:"#f9f9f9" }}>
-                  {["Title","Authors","Conference Name","Location","Year","Publisher","Citations","Indexing","Action"].map(h => (
+                  {["Title","Authors","Conference Name","Location","Year","Publisher","Citations","Indexing","Source","Action"].map(h => (
                     <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
+                  <tr><td colSpan={10} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
                 ) : pubs.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No conference papers found in {scopeLabel.toLowerCase()}</td></tr>
+                  <tr><td colSpan={10} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No conference papers found in {scopeLabel.toLowerCase()}</td></tr>
                 ) : pubs.map(p => (
                   <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
                     <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
@@ -342,6 +380,7 @@ export default function Publications() {
                     <td style={{ padding:"10px 14px", fontSize:11, color:"#888" }}>{p.publisher || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
                     <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
+                    <td style={{ padding:"10px 14px" }}><SourceBadges sources={p.sources} source_platform={p.source_platform} /></td>
                     <td style={{ padding:"10px 14px" }}>
                       <button onClick={()=>handleDelete(p.pub_id)} style={{ fontSize:10, color:"#A32D2D", background:"#FCEBEB", padding:"2px 8px", borderRadius:4, border:"none", cursor:"pointer" }}>🗑</button>
                     </td>
@@ -353,16 +392,16 @@ export default function Publications() {
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:"#f9f9f9" }}>
-                  {["Title","Authors","Journal","Year","Quartile","IF","Citations","Indexing","Action"].map(h => (
+                  {["Title","Authors","Journal","Year","Quartile","IF","Citations","Indexing","Source","Action"].map(h => (
                     <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
+                  <tr><td colSpan={10} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
                 ) : pubs.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No journal articles found in {scopeLabel.toLowerCase()}</td></tr>
+                  <tr><td colSpan={10} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No journal articles found in {scopeLabel.toLowerCase()}</td></tr>
                 ) : pubs.map(p => (
                   <tr key={p.pub_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
                     <td style={{ padding:"10px 14px", fontSize:12, color:P, cursor:"pointer", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} onClick={()=>navigate(`/publications/${p.pub_id}`)}>{p.title}</td>
@@ -377,6 +416,7 @@ export default function Publications() {
                     <td style={{ padding:"10px 14px", fontSize:11 }}>{p.impact_factor || "—"}</td>
                     <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
                     <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
+                    <td style={{ padding:"10px 14px" }}><SourceBadges sources={p.sources} source_platform={p.source_platform} /></td>
                     <td style={{ padding:"10px 14px" }}>
                       <button onClick={()=>handleDelete(p.pub_id)} style={{ fontSize:10, color:"#A32D2D", background:"#FCEBEB", padding:"2px 8px", borderRadius:4, border:"none", cursor:"pointer" }}>🗑</button>
                     </td>
@@ -388,16 +428,16 @@ export default function Publications() {
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:"#f9f9f9" }}>
-                  {["Title","Authors","Type","Journal / Conference","Year","Quartile","Citations","Indexing","Action"].map(h => (
+                  {["Title","Authors","Type","Journal / Conference","Year","Quartile","Citations","Indexing","Source","Action"].map(h => (
                     <th key={h} style={{ padding:"10px 14px", fontSize:11, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
+                  <tr><td colSpan={10} style={{ padding:40, textAlign:"center" }}><div className="spinner" /></td></tr>
                 ) : pubs.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No publications found in {scopeLabel.toLowerCase()}</td></tr>
+                  <tr><td colSpan={10} style={{ padding:60, textAlign:"center", color:"#aaa", fontSize:14 }}>No publications found in {scopeLabel.toLowerCase()}</td></tr>
                 ) : pubs.map(p => {
                   const pt = p.publication_type === "Conference" ? "Conference" : "Journal";
                   const isConf = pt === "Conference";
@@ -417,6 +457,7 @@ export default function Publications() {
                       </td>
                       <td style={{ padding:"10px 14px", fontSize:11 }}>{p.citations_count}</td>
                       <td style={{ padding:"10px 14px", fontSize:10, color:"#888" }}>{p.indexing}</td>
+                      <td style={{ padding:"10px 14px" }}><SourceBadges sources={p.sources} source_platform={p.source_platform} /></td>
                       <td style={{ padding:"10px 14px" }}>
                         <button onClick={()=>handleDelete(p.pub_id)} style={{ fontSize:10, color:"#A32D2D", background:"#FCEBEB", padding:"2px 8px", borderRadius:4, border:"none", cursor:"pointer" }}>🗑</button>
                       </td>

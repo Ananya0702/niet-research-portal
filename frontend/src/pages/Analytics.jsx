@@ -29,13 +29,23 @@ function StatCard({ label, value, sub, color }) {
 export default function Analytics() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
+  const [source,  setSource]  = useState("all");
 
   useEffect(() => {
-    API.get("/faculty/me/analytics")
+    setLoading(true);
+    API.get("/faculty/me/analytics", { params: source !== "all" ? { source } : {} })
       .then(res => setData(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [source]);
+
+  const SOURCE_OPTIONS = [
+    { key:"all", label:"All Sources" },
+    { key:"manual", label:"📝 Manual" },
+    { key:"google_scholar", label:"🎓 Google Scholar" },
+    { key:"orcid", label:"🆔 ORCID" },
+    { key:"scopus", label:"📘 Scopus" },
+  ];
 
   if (loading) return (
     <Layout>
@@ -62,6 +72,12 @@ export default function Analytics() {
         <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
           Deep dive into your research performance
         </div>
+      </div>
+      <div style={{ background: "#fff", borderBottom: "1px solid #eee", padding: "8px 20px", display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: "#888", fontWeight: 500 }}>Source:</span>
+        <select value={source} onChange={e => setSource(e.target.value)} style={{ padding: "5px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 11, outline: "none", fontWeight: source !== "all" ? 600 : 400 }}>
+          {SOURCE_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>

@@ -56,6 +56,7 @@ def _scoped_faculty(db, school_depts, scope_dept_id):
 @router.get("/dashboard")
 def get_dean_dashboard(
     dept_id: int = None,
+    source: str = "all",
     db: Session = Depends(get_db),
     current=Depends(get_current_faculty),
 ):
@@ -75,9 +76,13 @@ def get_dean_dashboard(
     all_faculty = _scoped_faculty(db, school_depts, scope_dept_id)
     faculty_ids = [f.faculty_id for f in all_faculty]
 
-    all_pubs = db.query(Publication).filter(
+    pubs_q = db.query(Publication).filter(
         Publication.faculty_id.in_(faculty_ids)
-    ).all() if faculty_ids else []
+    ) if faculty_ids else None
+    if pubs_q is not None and source and source != "all":
+        from app.source_filter import apply_source_filter
+        pubs_q = apply_source_filter(db, pubs_q, source)
+    all_pubs = pubs_q.all() if pubs_q is not None else []
     cur_year = datetime.now().year
     pubs_this_year = [p for p in all_pubs if p.year == cur_year]
 
@@ -189,9 +194,13 @@ def get_dean_dashboard(
             break
 
     # Latest publications
-    latest_pubs = db.query(Publication).filter(
+    latest_q = db.query(Publication).filter(
         Publication.faculty_id.in_(faculty_ids)
-    ).order_by(Publication.year.desc()).limit(5).all() if faculty_ids else []
+    )
+    if source and source != "all":
+        from app.source_filter import apply_source_filter
+        latest_q = apply_source_filter(db, latest_q, source)
+    latest_pubs = latest_q.order_by(Publication.year.desc()).limit(5).all() if faculty_ids else []
 
     latest_with_faculty = []
     for p in latest_pubs:

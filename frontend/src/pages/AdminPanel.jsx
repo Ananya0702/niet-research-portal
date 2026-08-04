@@ -27,7 +27,7 @@ const SIDEBAR_ITEMS = [
 
 const DESIGNATIONS = ["Professor","Associate Professor","Assistant Professor","Senior Lecturer","Lecturer","Dean","HOD",];
 const ROLES = ["faculty","hod","dean_rd"];
-const EMPTY_FORM = { name:"", email:"", password:"", role:"faculty", designation:"Assistant Professor", dept_id:"", is_phd:false, joining_year:new Date().getFullYear(), google_scholar_id:"", };
+const EMPTY_FORM = { name:"", email:"", password:"", role:"faculty", designation:"Assistant Professor", dept_id:"", is_phd:false, joining_year:new Date().getFullYear(), google_scholar_id:"", orcid_id:"", scopus_author_id:"", };
 
 export default function AdminPanel() {
   const [adminToken, setAdminToken] = useState(localStorage.getItem("admin_token")||"");
@@ -106,6 +106,8 @@ export default function AdminPanel() {
   const handleUpdate = async (e) => { e.preventDefault(); setSaving(true); try { const {faculty_id, school_id, dept_id, role, ...rest} = editForm; if (!school_id) { showMsg("error","School is required"); setSaving(false); return; } if (role !== "dean_rd" && !dept_id) { showMsg("error","Department is required for HOD and Faculty"); setSaving(false); return; } await apiPut(`/admin/faculty/${editForm.faculty_id}`, editForm); showMsg("success","✅ Updated"); setEditModal(false); fetchFaculty(); } catch { showMsg("error","Update failed"); } finally { setSaving(false); } };
   const handleDeactivate = async (id,name) => { if (!window.confirm(`Deactivate ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}`); showMsg("success",`${name} deactivated`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const handleDelete = async (id,name) => { if (!window.confirm(`Permanently delete ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}?hard=true`); showMsg("success",`${name} deleted`); fetchFaculty(); } catch { showMsg("error","Error"); } };
+  const [syncing, setSyncing] = useState(null);
+  const handleAdminSync = async (id) => { setSyncing(id); try { const res = await apiPost(`/admin/faculty/sync/${id}/orcid`); showMsg("success", `ORCID sync done: ${res.data.new_publications} new, ${res.data.already_existed} existing`); fetchFaculty(); } catch(err) { showMsg("error", err.response?.data?.detail||"Sync failed"); } finally { setSyncing(null); } };
 
   // ── Schools CRUD ──
   const handleCreateSchool = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/schools", schoolForm); showMsg("success","✅ School created"); setSchoolModal(false); setSchoolForm({school_name:""}); fetchSchools(); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
@@ -262,7 +264,7 @@ export default function AdminPanel() {
           {activeView==="depts" && <DeptsView {...{depts,schools,faculty,setDeptModal,setEditModal,setEditForm,handleDeleteDept,P}} />}
 
           {/* ═══ FACULTY ═══ */}
-          {activeView==="faculty" && <FacultyView {...{faculty,loading,filteredFaculty,roleFilter,setRoleFilter,deptFilter,setDeptFilter,depts,setModal,setEditModal,setEditForm,handleDeactivate,handleDelete,P,viewFacultyProfile}} />}
+          {activeView==="faculty" && <FacultyView {...{faculty,loading,filteredFaculty,roleFilter,setRoleFilter,deptFilter,setDeptFilter,depts,setModal,setEditModal,setEditForm,handleDeactivate,handleDelete,P,viewFacultyProfile,syncing,handleAdminSync}} />}
 
           {/* ═══ FACULTY DETAILS ═══ */}
           {activeView==="faculty-details" && <FacultyDetailsView {...{facultyDetails,facultyDetailsLoading,fdSearch,setFdSearch,fdRoleFilter,setFdRoleFilter,fdDeptFilter,setFdDeptFilter,depts,expandedFac,setExpandedFac,P,fdViewing,setFdViewing}} />}
@@ -377,6 +379,10 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
             <div><label style={lbl}>Joining Year</label><input type="number" value={form.joining_year} onChange={e=>setForm({...form,joining_year:e.target.value})} style={inp} min="1990" max="2030" /></div>
           </div>
           <div style={{ marginBottom:14 }}><label style={lbl}>Google Scholar ID</label><input value={form.google_scholar_id} onChange={e=>setForm({...form,google_scholar_id:e.target.value})} style={inp} placeholder="e.g. 8XXy5vkAAAAJ" /></div>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
+            <div><label style={lbl}>ORCID iD</label><input value={form.orcid_id} onChange={e=>setForm({...form,orcid_id:e.target.value})} style={inp} placeholder="e.g. 0000-0001-2345-6789" /></div>
+            <div><label style={lbl}>Scopus Author ID</label><input value={form.scopus_author_id} onChange={e=>setForm({...form,scopus_author_id:e.target.value})} style={inp} placeholder="e.g. 7005103581" /></div>
+          </div>
           <div style={{ display:"flex",gap:10 }}>
             <button type="button" onClick={()=>setModal(false)} style={{ flex:1,padding:10,border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",cursor:"pointer" }}>Cancel</button>
             <button type="submit" disabled={saving} style={{ flex:2,padding:10,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Creating...":"Create Faculty Account"}</button>
@@ -423,6 +429,10 @@ function EditModal({ editForm,setEditForm,saving,handleUpdate,setEditModal,depts
                 <div style={{ marginBottom:14 }}><label style={lbl}>Department</label><select value={editForm.dept_id||""} onChange={e=>setEditForm({...editForm,dept_id:e.target.value?parseInt(e.target.value):null})} style={inp}><option value="">{selEditSchool?"Select Department":"Select School first"}</option>{editSchoolDepts.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}</select></div>
               )}
               <div style={{ marginBottom:14 }}><label style={lbl}>Google Scholar ID</label><input value={editForm.google_scholar_id||""} onChange={e=>setEditForm({...editForm,google_scholar_id:e.target.value})} style={inp} placeholder="e.g. 8XXy5vkAAAAJ" /></div>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
+                <div><label style={lbl}>ORCID iD</label><input value={editForm.orcid_id||""} onChange={e=>setEditForm({...editForm,orcid_id:e.target.value})} style={inp} placeholder="e.g. 0000-0001-2345-6789" /></div>
+                <div><label style={lbl}>Scopus Author ID</label><input value={editForm.scopus_author_id||""} onChange={e=>setEditForm({...editForm,scopus_author_id:e.target.value})} style={inp} placeholder="e.g. 7005103581" /></div>
+              </div>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
                 <div><label style={lbl}>PhD Holder</label><select value={editForm.is_phd?"true":"false"} onChange={e=>setEditForm({...editForm,is_phd:e.target.value==="true"})} style={inp}><option value="false">No</option><option value="true">Yes</option></select></div>
                 <div><label style={lbl}>New Password</label><input type="password" value={editForm.password||""} onChange={e=>setEditForm({...editForm,password:e.target.value})} style={inp} placeholder="Leave blank = no change" /></div>
@@ -1301,7 +1311,25 @@ function DeptsView({ depts, schools, faculty, setDeptModal, setEditModal, setEdi
   );
 }
 
-function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFilter, deptFilter, setDeptFilter, depts, setModal, setEditModal, setEditForm, handleDeactivate, handleDelete, P, viewFacultyProfile }) {
+function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFilter, deptFilter, setDeptFilter, depts, setModal, setEditModal, setEditForm, handleDeactivate, handleDelete, P, viewFacultyProfile, syncing, handleAdminSync }) {
+  const PlatformBadges = ({ f }) => {
+    const items = [
+      { key:"scholar", label:"Scholar", connected:f.scholar_connected },
+      { key:"orcid", label:"ORCID", connected:f.orcid_connected },
+      { key:"scopus", label:"Scopus", connected:f.scopus_connected },
+    ];
+    return (
+      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+        {items.map(i=>(
+          <span key={i.key} style={{ fontSize:9, padding:"2px 6px", borderRadius:6, fontWeight:600,
+            background:i.connected?"#EAF3DE":"#F5F5F7",
+            color:i.connected?"#27500A":"#999",
+            border:i.connected?"1px solid #C7DFB0":"1px solid #eee",
+          }}>{i.label}{i.connected?" ✓":""}</span>
+        ))}
+      </div>
+    );
+  };
   return (
     <div style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
@@ -1327,11 +1355,11 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
           <thead>
             <tr style={{ background:"#f8f8fb" }}>
-              {["Name","Email","Role","Department","Status","Actions"].map(h=><th key={h} style={{ padding:"8px 12px",fontSize:11,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
+              {["Name","Email","Role","Department","Platforms","Status","Actions"].map(h=><th key={h} style={{ padding:"8px 12px",fontSize:11,color:"#888",textAlign:"left",borderBottom:"1px solid #eee",fontWeight:500 }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
-            {loading ? <tr><td colSpan={6} style={{padding:30,textAlign:"center"}}>Loading...</td></tr>
+            {loading ? <tr><td colSpan={7} style={{padding:30,textAlign:"center"}}>Loading...</td></tr>
             : filteredFaculty.map(f=>(
               <tr key={f.faculty_id} style={{ borderBottom:"1px solid #f5f5f5", opacity:f.is_active?1:0.5 }}>
                 <td style={{ padding:"8px 12px", fontWeight:500, cursor:"pointer" }} onClick={()=>viewFacultyProfile(f.faculty_id)}>
@@ -1345,16 +1373,20 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
                   }}>{f.role==="dean_rd"?"Dean":f.role==="hod"?"HOD":"Faculty"}</span>
                 </td>
                 <td style={{ padding:"8px 12px", color:"#555" }}>{f.dept_name||"—"}</td>
+                <td style={{ padding:"8px 12px" }}><PlatformBadges f={f} /></td>
                 <td style={{ padding:"8px 12px" }}>
                   <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, background:f.is_active?"#EAF3DE":"#FCEBEB", color:f.is_active?"#27500A":"#791F1F", fontWeight:500 }}>{f.is_active?"Active":"Inactive"}</span>
                 </td>
                 <td style={{ padding:"8px 12px" }}>
-                  <div style={{ display:"flex", gap:4 }}>
+                  <div style={{ display:"flex", gap:4, alignItems:"center" }}>
                     <span onClick={()=>{setEditForm({...f});setEditModal(true);}} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid "+P,color:P,fontSize:11,cursor:"pointer" }}>✏</span>
                     {f.is_active
                       ? <span onClick={()=>handleDeactivate(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #633806",color:"#633806",fontSize:11,cursor:"pointer" }}>⏸</span>
                       : <span onClick={()=>handleDelete(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:11,cursor:"pointer" }}>🗑</span>
                     }
+                    <span onClick={()=>handleAdminSync(f.faculty_id)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #0C447C",color:"#0C447C",fontSize:10,cursor:"pointer", whiteSpace:"nowrap" }}>
+                      {syncing===f.faculty_id ? "⏳ Syncing..." : "🔄 Sync"}
+                    </span>
                   </div>
                 </td>
               </tr>

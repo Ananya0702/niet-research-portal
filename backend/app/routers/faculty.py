@@ -239,14 +239,17 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
         ],
     }
 @router.get("/me/analytics")
-def get_my_analytics(db: Session = Depends(get_db),
+def get_my_analytics(source: str = "all",
+                     db: Session = Depends(get_db),
                      current=Depends(get_current_faculty)):
     faculty_id = current["faculty_id"]
     faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
 
-    pubs = db.query(Publication).filter(
-        Publication.faculty_id == faculty_id
-    ).all()
+    query = db.query(Publication).filter(Publication.faculty_id == faculty_id)
+    if source and source != "all":
+        from app.source_filter import apply_source_filter
+        query = apply_source_filter(db, query, source)
+    pubs = query.all()
 
     # Publications by year
     from collections import defaultdict
