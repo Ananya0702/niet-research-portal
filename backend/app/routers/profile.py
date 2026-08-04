@@ -240,7 +240,7 @@ def get_full_profile(db: Session = Depends(get_db),
     ).all()
     pub_citations = sum(p.citations_count or 0 for p in pubs)
     from app.metrics import avg_if
-    pub_avg_if = avg_if(pubs, fallback=fac.avg_impact_factor)
+    pub_avg_if = avg_if(pubs)
 
     education = [
         {

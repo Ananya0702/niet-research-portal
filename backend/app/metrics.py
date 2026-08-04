@@ -36,11 +36,11 @@ def avg_if_by_year(pubs):
     }
 
 
-def avg_if(pubs, fallback=0):
-    """Average impact factor from publication records. When no publication has a
-    real impact factor, fall back to the synced value stored on the faculty
-    record (fallback) so the metric is never misreported as zero."""
+def avg_if(pubs):
+    """Average impact factor from publication records. Returns None when no
+    publication carries a real impact factor, so UIs can show 'N/A' instead
+    of a misleading fallback value."""
     ifs = [p.impact_factor for p in pubs if p.impact_factor]
-    if ifs:
-        return round(sum(ifs) / len(ifs), 2)
-    return fallback or 0
+    if not ifs:
+        return None
+    return round(sum(ifs) / len(ifs), 2)

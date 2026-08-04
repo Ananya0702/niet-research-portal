@@ -533,7 +533,7 @@ export default function Profile() {
                     ["Publications", profile.total_publications, "#27500A"],
                     ["Citations", profile.total_citations?.toLocaleString(), "#633806"],
                     ["Score", profile.research_score, "#A32D2D"],
-                    ["Avg IF", profile.avg_impact_factor || "0", "#085041"],
+                    ["Avg IF", profile.avg_impact_factor ?? "N/A", "#085041"],
                   ].map(([label, val, color]) => (
                     <div key={label} style={{ textAlign: "center", padding: "6px 0" }}>
                       <div style={{ fontSize: 16, fontWeight: 700, color }}>{val ?? 0}</div>
@@ -760,7 +760,7 @@ export default function Profile() {
                         ["i10-index", profile.i10_index, "#0C447C"],
                         ["Total Publications", profile.total_publications, "#27500A"],
                         ["Total Citations", profile.total_citations?.toLocaleString(), "#633806"],
-                        ["Avg Impact Factor", profile.avg_impact_factor || "0", "#085041"],
+                        ["Avg Impact Factor", profile.avg_impact_factor ?? "N/A", "#085041"],
                         ["Research Score", profile.research_score, "#A32D2D"],
                       ].map(([label, val, color]) => (
                         <div key={label} style={{ background: "#f8f8fb", borderRadius: 12, padding: "16px", textAlign: "center" }}>

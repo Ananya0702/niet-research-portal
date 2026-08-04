@@ -196,7 +196,7 @@ export default function DeanDashboard() {
             value={kpis.inst_h_index}
             sub="Computed from publications" bg="#E1F5EE" />
           <KPICard icon="🎯" label="Avg Impact Factor"
-            value={kpis.avg_impact_factor}
+            value={kpis.avg_impact_factor ?? "N/A"}
             sub={growthStr(g.impact_factor)} bg="#FCEBEB" />
         </div>
 
@@ -524,7 +524,7 @@ export default function DeanDashboard() {
                     }}>{p.quartile}</span>
                   </td>
                   <td style={{ padding:"9px 10px", fontSize:12 }}>
-                    {p.impact_factor}
+                    {p.impact_factor || "-"}
                   </td>
                   <td style={{ padding:"9px 10px", fontSize:12 }}>
                     {p.year}

@@ -373,7 +373,7 @@ export default function HODDashboard() {
                       }}>{p.quartile}</span>
                     </td>
                     <td style={{ padding:"8px 8px",
-                      fontSize:12 }}>{p.impact_factor}</td>
+                      fontSize:12 }}>{p.impact_factor || "-"}</td>
                   </tr>
                 ))}
               </tbody>

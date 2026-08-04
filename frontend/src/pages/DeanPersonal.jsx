@@ -71,7 +71,7 @@ export default function DeanPersonal() {
             ["💬","Total Citations",        kpis.total_citations?.toLocaleString(),"#EAF3DE"],
             ["📈","h-index",               kpis.h_index,               "#FAEEDA"],
             ["👥","i10-index",             kpis.i10_index,             "#E1F5EE"],
-            ["🎯","Avg Impact Factor",     kpis.avg_impact_factor,     "#FCEBEB"],
+            ["🎯","Avg Impact Factor",     kpis.avg_impact_factor ?? "N/A",     "#FCEBEB"],
           ].map(([icon,label,value,bg]) => (
             <div key={label} style={{
               background:"#fff", border:"1px solid #eee", borderRadius:12,
@@ -209,7 +209,7 @@ export default function DeanPersonal() {
                       }}>{p.quartile}</span>
                     </td>
                     <td style={{ padding:"8px 8px", fontSize:12 }}>
-                      {p.impact_factor}
+                      {p.impact_factor || "-"}
                     </td>
                     <td style={{ padding:"8px 8px", fontSize:12 }}>
                       {p.citations_count}

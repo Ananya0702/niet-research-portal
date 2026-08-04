@@ -58,7 +58,7 @@ export default function Reports() {
             ["Total Citations", k.total_citations],
             ["h-index", k.h_index],
             ["i10-index", k.i10_index],
-            ["Average Impact Factor", k.avg_impact_factor],
+            ["Average Impact Factor", k.avg_impact_factor ?? "N/A"],
           ],
         },
         {

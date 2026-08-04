@@ -175,9 +175,9 @@ def get_dean_dashboard(
             })
     dept_scorecard.sort(key=lambda x: x["score"], reverse=True)
 
-    # Average impact factor
-    all_ifs = [p.impact_factor for p in all_pubs if p.impact_factor]
-    avg_if  = round(sum(all_ifs) / len(all_ifs), 2) if all_ifs else 0
+    # Average impact factor (None when no real data → UI shows N/A)
+    from app.metrics import avg_if
+    avg_if = avg_if(all_pubs)
 
     # Scoped h-index
     cite_counts = sorted([p.citations_count or 0 for p in all_pubs], reverse=True)

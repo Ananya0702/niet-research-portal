@@ -89,7 +89,7 @@ export default function Dashboard() {
           <KPICard icon="👥" label="i10-index"
             value={kpis.i10_index}             growth="From Google Scholar sync" bg="#E1F5EE" />
           <KPICard icon="🎯" label="Avg Impact Factor"
-            value={kpis.avg_impact_factor}     growth={growthStr(g.impact_factor)} bg="#FCEBEB" />
+            value={kpis.avg_impact_factor ?? "N/A"}     growth={growthStr(g.impact_factor)} bg="#FCEBEB" />
         </div>
 
         {/* Charts Row */}
@@ -203,7 +203,7 @@ export default function Dashboard() {
                         color:      p.quartile==="Q1"?"#0C447C":p.quartile==="Q2"?"#27500A":"#633806",
                       }}>{p.quartile}</span>
                     </td>
-                    <td style={{ padding: "8px 8px", fontSize: 12 }}>{p.impact_factor}</td>
+                    <td style={{ padding: "8px 8px", fontSize: 12 }}>{p.impact_factor || "-"}</td>
                     <td style={{ padding: "8px 8px", fontSize: 12 }}>{p.citations_count}</td>
                   </tr>
                 ))}

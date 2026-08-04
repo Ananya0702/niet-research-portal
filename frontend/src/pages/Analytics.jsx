@@ -71,7 +71,7 @@ export default function Analytics() {
           <StatCard label="Total Publications" value={summary.total_publications} sub="All time" color="#534AB7" />
           <StatCard label="Q1 Publications"    value={summary.q1_publications}    sub={`${summary.q1_percent}% of total`} color="#0C447C" />
           <StatCard label="Total Citations"     value={summary.total_citations?.toLocaleString()} sub="All time" color="#27500A" />
-          <StatCard label="Avg Impact Factor"   value={summary.avg_impact_factor} sub="Across all papers" color="#BA7517" />
+          <StatCard label="Avg Impact Factor"   value={summary.avg_impact_factor ?? "N/A"} sub="Across all papers" color="#BA7517" />
           <StatCard label="Years Active"         value={summary.years_active}      sub="Years with publications" color="#085041" />
         </div>
 

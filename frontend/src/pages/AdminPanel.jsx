@@ -581,7 +581,7 @@ function FacultyProfileView({ data, loading, onClose, P }) {
           ["📈","h-index",k.h_index||0,"#EAF3DE","#27500A"],
           ["📊","i10-index",k.i10_index||0,"#FAEEDA","#633806"],
           ["📅","This Year",k.publications_this_year||0,"#E1F5EE","#085041"],
-          ["⭐","Impact Factor",k.avg_impact_factor||"0.0","#FCEBEB","#A32D2D"],
+          ["⭐","Impact Factor",k.avg_impact_factor ?? "N/A","#FCEBEB","#A32D2D"],
         ].map(([icon,label,val,bg,color]) => (
           <div key={label} style={{ background:"#fff", borderRadius:12, padding:"12px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -841,7 +841,7 @@ function FacultyProfileView({ data, loading, onClose, P }) {
               ["Total Citations",k.total_citations||0,"#0C447C"],
               ["h-index",k.h_index||0,"#27500A"],
               ["i10-index",k.i10_index||0,"#633806"],
-              ["Avg Impact Factor",k.avg_impact_factor||"0.0","#085041"],
+              ["Avg Impact Factor",k.avg_impact_factor ?? "N/A","#085041"],
               ["This Year",k.publications_this_year||0,"#A32D2D"],
             ].map(([label,val,color])=>(
               <div key={label} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", fontSize:11, borderBottom:"1px solid #f5f5f5" }}>
