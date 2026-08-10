@@ -75,6 +75,25 @@ class Faculty(Base):
     last_orcid_sync      = Column(DateTime, nullable=True)
     last_scopus_sync     = Column(DateTime, nullable=True)
 
+    # ── Account security ──
+    mobile_number        = Column(String(20), nullable=True)
+    mobile_country_code  = Column(String(6), nullable=True)   # e.g. +91
+    email_verified       = Column(Boolean, default=False)
+    mobile_verified      = Column(Boolean, default=False)
+    otp_hash             = Column(String(255), nullable=True)
+    otp_expiry           = Column(DateTime, nullable=True)
+    otp_attempts         = Column(Integer, default=0)
+    otp_resend_count     = Column(Integer, default=0)
+    otp_last_sent        = Column(DateTime, nullable=True)
+    otp_method           = Column(String(10), nullable=True)   # email | mobile
+    last_password_changed= Column(DateTime, nullable=True)
+    password_history     = Column(Text, nullable=True)         # JSON array of hashed past passwords
+    failed_attempts      = Column(Integer, default=0)
+    lock_until           = Column(DateTime, nullable=True)
+    token_version        = Column(Integer, default=0)          # bumped to invalidate all sessions
+    force_password_reset = Column(Boolean, default=False)
+    updated_at           = Column(DateTime, onupdate=func.now())
+
     department     = relationship("Department", back_populates="faculty",
                                    foreign_keys=[dept_id])
     publications   = relationship("Publication", back_populates="faculty")
@@ -290,3 +309,19 @@ class FacultySocialLink(Base):
     platform   = Column(String(50))  # linkedin | twitter | researchgate | github | website
     url        = Column(String(500))
     faculty    = relationship("Faculty", back_populates="social_links")
+
+
+class SecurityAuditLog(Base):
+    """Security audit trail for logins, OTPs and password changes."""
+    __tablename__ = "security_audit_logs"
+    log_id           = Column(Integer, primary_key=True)
+    faculty_id       = Column(Integer, ForeignKey("faculty.faculty_id"), nullable=True)
+    action           = Column(String(60))    # login_success | login_failed | account_locked | otp_generated | otp_verified | otp_failed | password_changed | password_reset | forced_reset | contact_verified
+    ip_address       = Column(String(60), nullable=True)
+    user_agent       = Column(String(300), nullable=True)
+    device           = Column(String(60), nullable=True)
+    browser          = Column(String(60), nullable=True)
+    method           = Column(String(10), nullable=True)   # email | mobile
+    status           = Column(String(10), default="success")  # success | failed
+    detail           = Column(String(500), nullable=True)
+    created_at       = Column(DateTime, server_default=func.now())

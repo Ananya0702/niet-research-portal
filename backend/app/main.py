@@ -2,7 +2,28 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.database import engine, Base
+import logging
 import os
+
+
+def _setup_logging():
+    """Emit app/provider diagnostics to stderr/console.
+
+    OTP values are NEVER logged or returned in API responses — they are
+    delivered only to the registered mobile number via the configured SMS
+    gateway.
+    """
+    logger = logging.getLogger("notifications")
+    logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+        logger.addHandler(handler)
+    logger.propagate = False
+
+
+_setup_logging()
 from app.routers import auth, faculty, publications, projects, patents, achievements, hod
 from app.routers import auth, faculty, publications, projects, patents, achievements, hod, dean
 from app.routers import auth, faculty, publications, projects, patents, achievements, hod, dean, ml
@@ -13,6 +34,7 @@ from app.routers import activity
 from app.routers import announcements
 from app.routers import admin
 from app.routers import profile
+from app.routers import security
 from app.security import get_password_hash
 from app.database import SessionLocal
 from app.routers.admin import Admin
@@ -75,6 +97,7 @@ app.include_router(activity.router, prefix="/activity", tags=["Activity"])
 app.include_router(announcements.router, prefix="/announcements", tags=["Announcements"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(profile.router, prefix="/profile", tags=["Profile"])
+app.include_router(security.router, prefix="/security", tags=["Security"])
 
 UPLOAD_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_ROOT, exist_ok=True)

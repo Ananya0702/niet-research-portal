@@ -17,16 +17,27 @@ HEADERS = {
 def _parse_scholar_html(html: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     h_index = i10_index = citedby = 0
-    for td in soup.select("td.gsc_rsb_std"):
-        txt = td.get_text(strip=True)
-        nums = re.findall(r"\d+", txt)
-        val = int(nums[0]) if nums else 0
-        if h_index == 0:
-            h_index = val
-        elif i10_index == 0:
-            i10_index = val
-        elif citedby == 0:
+
+    # Each metric is a row: <td label> <td All> <td Since>. Map by row label so
+    # the columns never get shifted regardless of page layout.
+    for row in soup.select("#gsc_rsb_st tr"):
+        label_el = row.select_one("td.gsc_rsb_sc1 a.gsc_rsb_f")
+        if not label_el:
+            continue
+        label = label_el.get_text(strip=True).lower()
+        values = []
+        for td in row.select("td.gsc_rsb_std"):
+            nums = re.findall(r"\d+", td.get_text(strip=True))
+            values.append(int(nums[0]) if nums else 0)
+        if not values:
+            continue
+        val = values[0]  # "All" column
+        if "citations" in label:
             citedby = val
+        elif "h-index" in label:
+            h_index = val
+        elif "i10" in label:
+            i10_index = val
 
     publications = []
     for row in soup.select("tr.gsc_a_tr"):

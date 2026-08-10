@@ -1,6 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Layout from "../components/Layout";
-import API from "../services/api";
+import OtpInput from "../components/OtpInput";
+import API, {
+  getAccountInfo, updateAccountInfo, verifyAccountInfo,
+  changePasswordRequest, changePasswordVerify, changePasswordConfirm,
+  emailChangePasswordRequest, emailChangePasswordVerify, emailChangePasswordConfirm,
+  checkPasswordStrength,
+} from "../services/api";
 
 const P = "#5B3DF5";
 
@@ -14,61 +20,186 @@ const TABS = [
   { key: "integrations",  icon: "🔗", label: "Integrations" },
 ];
 
+const PW_LABELS = {
+  length: "8–64 characters",
+  uppercase: "One uppercase letter",
+  lowercase: "One lowercase letter",
+  number: "One number",
+  special: "One special character",
+};
+
 export default function Settings() {
   const [tab, setTab] = useState("account");
-  const [form, setForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
-  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [editModal, setEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({});
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  const [showPwd, setShowPwd] = useState({ current: false, new: false, confirm: false });
-  const [pwdStrength, setPwdStrength] = useState({ chars: false, upper: false, number: false, special: false });
+  const [saving, setSaving] = useState(false);
+  const [account, setAccount] = useState(null);
   const [profile, setProfile] = useState(null);
 
+  const [editModal, setEditModal] = useState(false);
+  const [editEmail, setEditEmail] = useState("");
+  const [editMobile, setEditMobile] = useState("");
+
+  // Change-password stepper
+  const [pwModal, setPwModal] = useState(false);
+  const [pwStep, setPwStep] = useState(0);
+  const [pwMasked, setPwMasked] = useState("");
+  const [pwOtp, setPwOtp] = useState("");
+  const [resendIn, setResendIn] = useState(300);
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwRules, setPwRules] = useState([]);
+  const [pwStrength, setPwStrength] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState("");
+  const otpKey = useRef(0);
+  const resendRef = useRef(60);
+
   const showMsg = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
+
   useEffect(() => {
-    API.get("/faculty/me/profile").then(r => setProfile(r.data)).catch(() => showMsg("error", "Failed to load profile"));
+    API.get("/faculty/me/profile").then(r => setProfile(r.data)).catch(() => {});
+    getAccountInfo().then(r => {
+      setAccount(r.data);
+      if (r.data.force_password_reset) {
+        setTab("security");
+        openPwModal();
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const checkPwdStrength = (val) => {
-    setPwdStrength({
-      chars: val.length >= 8,
-      upper: /[A-Z]/.test(val),
-      number: /[0-9]/.test(val),
-      special: /[!@#$%^&*]/.test(val),
-    });
+  useEffect(() => {
+    if (otpRequested && resendIn > 0) {
+      const t = setInterval(() => setResendIn(s => (s > 0 ? s - 1 : 0)), 1000);
+      return () => clearInterval(t);
+    }
+  }, [otpRequested, resendIn]);
+
+  const resetOtpTimer = (sec) => { setResendIn(sec || 60); setOtpRequested(true); otpKey.current++; setPwOtp(""); };
+
+  const fmtTimer = (s) => `0${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const runPw = async (fn) => {
+    setPwLoading(true); setPwError(""); setPwSuccess("");
+    try { return await fn(); }
+    catch (err) { setPwError(err.response?.data?.detail || "Something went wrong."); return null; }
+    finally { setPwLoading(false); }
   };
 
-  const handlePasswordChange = async (e) => {
-    e.preventDefault();
-    if (form.new_password !== form.confirm_password) { showMsg("error", "Passwords do not match."); return; }
-    if (form.new_password.length < 6) { showMsg("error", "Password must be at least 6 characters."); return; }
-    setSaving(true);
-    try {
-      await API.put("/faculty/me/password", { current_password: form.current_password, new_password: form.new_password });
-      showMsg("success", "✅ Password changed successfully!");
-      setForm({ current_password: "", new_password: "", confirm_password: "" });
-    } catch (err) { showMsg("error", err.response?.data?.detail || "Failed."); }
-    finally { setSaving(false); }
+  // ── Change password flow ────────────────────────────────────────────────
+  const openPwModal = () => {
+    setPwAction(null);
+    setPwModal(true); setPwStep(0); setPwError(""); setPwSuccess("");
+    setPwNew(""); setPwConfirm(""); setPwRules([]); setPwStrength("");
+    setOtpRequested(false); setResendIn(300);
   };
 
-  const handleEditSave = async () => {
+  const sendOtp = async () => {
+    if (pwAction === "verify_contact") {
+      const res = await runPw(() => changePasswordRequest("verify_contact"));
+      if (!res) return;
+      setPwMasked(res.data.masked_contact);
+      resetOtpTimer(300);
+      setPwStep(1);
+      return;
+    }
+    const res = await runPw(() => emailChangePasswordRequest(account?.email || ""));
+    if (!res) return;
+    setPwMasked(res.data.masked_contact);
+    resendRef.current = res.data.retry_after_seconds || 60;
+    resetOtpTimer(res.data.retry_after_seconds || 60);
+    setPwStep(1);
+  };
+
+  const handleOtpChange = (obj) => { if (obj.complete) setPwOtp(obj.values.join("")); };
+
+  const verifyOtp = async () => {
+    const res = await runPw(() => emailChangePasswordVerify(pwOtp));
+    if (!res) return;
+    setPwStep(2);
+  };
+
+  const resendOtp = () => {
+    if (pwAction === "verify_contact") {
+      resetOtpTimer(300);
+      runPw(() => changePasswordRequest("verify_contact"));
+      return;
+    }
+    resetOtpTimer(resendRef.current);
+    runPw(() => emailChangePasswordRequest(account?.email || ""));
+  };
+
+  const handlePwStrength = async (val) => {
+    setPwNew(val);
+    try {
+      const r = await checkPasswordStrength(val);
+      setPwRules(Object.keys(PW_LABELS).map(k => ({ label: PW_LABELS[k], passed: !!r.data.rules[k] })));
+      setPwStrength(r.data.strength);
+    } catch { /* ignore */ }
+  };
+
+  const confirmPassword = async () => {
+    if (pwNew !== pwConfirm) { setPwError("Passwords do not match."); return; }
+    if (pwStrength === "weak") { setPwError("Please choose a stronger password."); return; }
+    const res = await runPw(() => emailChangePasswordConfirm({ new_password: pwNew }));
+    if (!res) return;
+    setPwSuccess(res.data.message);
+    setPwStep(3);
+  };
+
+  const finishPw = () => {
+    localStorage.clear();
+    window.location.href = "/";
+  };
+
+  // ── Account info edit ────────────────────────────────────────────────────
+  const openEdit = () => {
+    setEditEmail(account?.email || "");
+    setEditMobile(account?.mobile_number || "");
+    setEditModal(true);
+  };
+
+  const saveAccountInfo = async () => {
     setSaving(true);
     try {
-      await API.put("/faculty/me/profile", editForm);
-      if (editForm.name) localStorage.setItem("name", editForm.name);
-      showMsg("success", "✅ Account updated");
+      await updateAccountInfo({ email: editEmail, mobile_number: editMobile });
+      const r = await getAccountInfo();
+      setAccount(r.data);
+      showMsg("success", "✅ Account information updated. Verification status reset — please re-verify.");
       setEditModal(false);
-      const r = await API.get("/faculty/me/profile");
-      setProfile(r.data);
-    } catch { showMsg("error", "Failed to update"); }
+    } catch (err) { showMsg("error", err.response?.data?.detail || "Failed to update."); }
     finally { setSaving(false); }
+  };
+
+  const startVerify = async (field) => {
+    if (field !== "mobile") { showMsg("error", "Only mobile number verification is supported."); return; }
+    if (!account?.mobile_number) { showMsg("error", "No mobile number to verify. Add one in Account Information."); return; }
+    setPwAction("verify_contact");
+    setPwStep(0);
+    setPwError(""); setPwSuccess("");
+    setPwModal(true);
+    const res = await runPw(() => changePasswordRequest("verify_contact"));  // reuse OTP send path
+    if (!res) return;
+    setPwMasked(res.data.masked_contact);
+    resetOtpTimer(300);
+    setPwStep(1);
+  };
+  const [pwAction, setPwAction] = useState(null);
+
+  const confirmVerify = async () => {
+    const res = await runPw(() => verifyAccountInfo("mobile", pwOtp));
+    if (!res) return;
+    const r = await getAccountInfo();
+    setAccount(r.data);
+    showMsg("success", "✅ Mobile number verified successfully");
+    setPwModal(false);
   };
 
   const role = localStorage.getItem("role") || "faculty";
   const name = localStorage.getItem("name") || "User";
-  const email = localStorage.getItem("email") || "";
+  const email = account?.email || localStorage.getItem("email") || "";
   const initials = name.split(" ").filter(w => !w.startsWith("Dr.")).slice(0,2).map(w=>w[0]).join("").toUpperCase();
   const roleLabel = role === "hod" ? "Head of Department" : role === "dean_rd" ? "Dean" : "Faculty";
 
@@ -133,25 +264,28 @@ export default function Settings() {
                 <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                     <span style={{ fontSize:14, fontWeight:600, color:"#1a1a1a" }}>Account Information</span>
-                    <span onClick={() => { setEditForm({ name, email, designation: profile?.designation||"" }); setEditModal(true); }} style={{ fontSize:11, color:P, cursor:"pointer", fontWeight:500, padding:"4px 12px", border:"1px solid "+P, borderRadius:6 }}>✏ Edit</span>
+                    <span onClick={openEdit} style={{ fontSize:11, color:P, cursor:"pointer", fontWeight:500, padding:"4px 12px", border:"1px solid "+P, borderRadius:6 }}>✏ Edit</span>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 24px" }}>
                     {[
                       ["Full Name", name],
                       ["Role", roleLabel],
                       ["Department", profile?.dept_name || "—"],
-                      ["Email", email, "✅ Verified"],
-                      ["Phone", profile?.phone || "Not set", profile?.phone ? "✅ Verified" : null],
+                      ["Email", email, account?.email_verified ? "✅ Verified" : "Not verified", account?.email_verified],
+                      ["Mobile", account?.mobile_display || account?.mobile_number || "Not set", account?.mobile_verified ? "✅ Verified" : (account?.mobile_number ? "Verify" : null), account?.mobile_verified],
                       ["Employee ID", profile?.employee_id || "Not set"],
                       ["Joining Year", profile?.joining_year || "—"],
-                      ["Account Status", "🟢 Active"],
-                    ].map(([label, val, badge]) => (
+                      ["Account Status", account?.locked ? "🔴 Locked" : "🟢 Active"],
+                    ].map(([label, val, badge, verified]) => (
                       <div key={label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid #f5f5f5" }}>
                         <div>
                           <div style={{ fontSize:10, color:"#888" }}>{label}</div>
                           <div style={{ fontSize:12, color:"#1a1a1a", fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
                             {val}
-                            {badge && <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background:"#EAF3DE", color:"#27500A", fontWeight:500 }}>{badge}</span>}
+                            {badge && !verified && badge !== "Verify" && badge !== null && <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background: badge.startsWith("✅") ? "#EAF3DE" : "#FDF3D7", color: badge.startsWith("✅") ? "#27500A" : "#8a6d1a", fontWeight:500 }}>{badge}</span>}
+                            {badge === "Verify" && (
+                              <span onClick={() => startVerify("mobile")} style={{ fontSize:9, padding:"2px 8px", borderRadius:6, background:"#FDF3D7", color:"#8a6d1a", fontWeight:600, cursor:"pointer" }}>Verify →</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -161,45 +295,21 @@ export default function Settings() {
 
                 {/* Change Password */}
                 <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                     <span style={{ fontSize:14, fontWeight:600, color:"#1a1a1a" }}>Change Password</span>
                   </div>
-                  <form onSubmit={handlePasswordChange}>
-                    {[
-                      ["Current Password", "current_password", "current"],
-                      ["New Password", "new_password", "new"],
-                      ["Confirm Password", "confirm_password", "confirm"],
-                    ].map(([label, key, showKey]) => (
-                      <div key={key} style={{ marginBottom:12 }}>
-                        <label style={{ fontSize:11,color:"#555",display:"block",marginBottom:3 }}>{label}</label>
-                        <div style={{ position:"relative" }}>
-                          <span style={{ position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:"#aaa" }}>🔒</span>
-                          <input type={showPwd[showKey] ? "text" : "password"} required value={form[key]}
-                            onChange={e => { setForm({...form,[key]:e.target.value}); if (key==="new_password") checkPwdStrength(e.target.value); }}
-                            style={{ width:"100%",padding:"8px 30px 8px 30px",border:"1px solid #ddd",borderRadius:8,fontSize:12 }} placeholder="••••••••" />
-                          <span onClick={() => setShowPwd({...showPwd,[showKey]:!showPwd[showKey]})} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:"#aaa",cursor:"pointer" }}>{showPwd[showKey]?"🙈":"👁"}</span>
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14, fontSize:11 }}>
-                      {[
-                        [pwdStrength.chars, "✔ Minimum 8 Characters"],
-                        [pwdStrength.upper, "✔ One Uppercase Letter"],
-                        [pwdStrength.number, "✔ One Number"],
-                        [pwdStrength.special, "✔ One Special Character"],
-                      ].map(([done,text]) => (
-                        <span key={text} style={{ color: done ? "#27500A" : "#aaa" }}>{text}</span>
-                      ))}
-                    </div>
-                    <button type="submit" disabled={saving} style={{ width:"100%",padding:"10px",background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Updating...":"Update Password"}</button>
-                  </form>
+                  <div style={{ fontSize:11, color:"#888", marginBottom:14 }}>
+                    Password changed on: <b>{account?.last_password_changed ? new Date(account.last_password_changed).toLocaleDateString() : "Never"}</b> ·
+                    All your other sessions will be logged out.
+                  </div>
+                  <button onClick={openPwModal} style={{ width:"100%",padding:"10px",background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>🔒 Change Password (Email OTP)</button>
                 </div>
 
                 {/* Logout */}
                 <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
                   <div style={{ fontSize:14, fontWeight:600, color:"#1a1a1a", marginBottom:6 }}>Logout</div>
                   <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>This will end your current session and redirect you to the login page.</div>
-                  <button onClick={() => setConfirmLogout(true)} style={{ padding:"9px 24px", border:"1px solid #A32D2D", borderRadius:8, fontSize:12, fontWeight:500, color:"#A32D2D", background:"#fff", cursor:"pointer" }}>Logout</button>
+                  <button onClick={() => { localStorage.clear(); window.location.href = "/"; }} style={{ padding:"9px 24px", border:"1px solid #A32D2D", borderRadius:8, fontSize:12, fontWeight:500, color:"#A32D2D", background:"#fff", cursor:"pointer" }}>Logout</button>
                 </div>
               </div>
 
@@ -230,44 +340,29 @@ export default function Settings() {
                       </div>
                     ))}
                   </div>
-                  <button style={{ width:"100%",marginTop:10,padding:"8px",background:P,color:"#fff",borderRadius:8,fontSize:12,fontWeight:500,border:"none",cursor:"pointer" }}>Complete Profile →</button>
                 </div>
 
-                {/* Recent Activity */}
+                {/* Account Security Status */}
                 <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                    <span style={{ fontSize:12, fontWeight:600, color:"#1a1a1a" }}>Recent Activity</span>
-                    <span style={{ fontSize:10, color:P, cursor:"pointer" }}>View All</span>
-                  </div>
-                  <div style={{ maxHeight:200, overflowY:"auto" }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#1a1a1a", marginBottom:10 }}>🛡 Account Security</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                     {[
-                      ["🟢", "Successful Login", "From Chrome on Windows", "2 hours ago"],
-                      ["✏", "Profile Updated", "Personal information changed", "Yesterday"],
-                      ["🔒", "Password Changed", "Security update", "3 days ago"],
-                      ["✅", "Email Verified", "dean@niet.co.in verified", "1 week ago"],
-                      ["🔄", "Google Scholar Synced", "15 new publications added", "2 weeks ago"],
-                      ["🔗", "ORCID Connected", "ORCID account linked", "1 month ago"],
-                    ].map(([icon,title,desc,time]) => (
-                      <div key={title} style={{ display:"flex", gap:8, padding:"7px 0", borderBottom:"1px solid #f5f5f5" }}>
-                        <span style={{ fontSize:14, width:20 }}>{icon}</span>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:11, fontWeight:500, color:"#1a1a1a" }}>{title}</div>
-                          <div style={{ fontSize:10, color:"#888" }}>{desc}</div>
+                      ["Registered email", account ? (account.email || "—") : "—", account?.email_verified],
+                      ["Registered mobile", account?.mobile_number || "—", account?.mobile_verified],
+                    ].map(([label, val, verified]) => (
+                      <div key={label} style={{ padding:"8px 0", borderBottom:"1px solid #f5f5f5" }}>
+                        <div style={{ fontSize:10, color:"#888" }}>{label}</div>
+                        <div style={{ fontSize:12, color:"#1a1a1a", fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
+                          {val}
+                          {verified
+                            ? <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background:"#EAF3DE", color:"#27500A" }}>✅ Verified</span>
+                            : <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background:"#FDF3D7", color:"#8a6d1a" }}>Unverified</span>}
                         </div>
-                        <div style={{ fontSize:9, color:"#aaa", whiteSpace:"nowrap" }}>{time}</div>
                       </div>
                     ))}
-                  </div>
-                </div>
-
-                {/* Danger Zone */}
-                <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #FCEBEB" }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:"#A32D2D", marginBottom:4 }}>⚠ Danger Zone</div>
-                  <div style={{ fontSize:10, color:"#888", marginBottom:10 }}>Irreversible and sensitive account actions.</div>
-                  <div style={{ background:"#FCEBEB", borderRadius:10, padding:"12px" }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:"#791F1F", marginBottom:2 }}>Delete Account</div>
-                    <div style={{ fontSize:10, color:"#888", marginBottom:8 }}>Once deleted, your account cannot be recovered.</div>
-                    <button style={{ width:"100%",padding:"7px",background:"#A32D2D",color:"#fff",borderRadius:8,fontSize:11,fontWeight:500,border:"none",cursor:"pointer" }}>🗑 Delete Account</button>
+                    <div style={{ fontSize:10, color:"#888" }}>
+                      Password last changed: <b>{account?.last_password_changed ? new Date(account.last_password_changed).toLocaleString() : "Never"}</b>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -276,28 +371,69 @@ export default function Settings() {
 
           {/* ═══ SECURITY TAB ═══ */}
           {tab === "security" && (
-            <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
-              <div style={{ fontSize:14, fontWeight:600, marginBottom:14 }}>Security Settings</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                {[
-                  ["🔐", "Two-Factor Authentication", "Add an extra layer of security to your account.", true],
-                  ["📱", "Login Verification", "Verify logins from new devices.", true],
-                  ["✉", "Recovery Email", "Set an email for account recovery.", false],
-                  ["📞", "Recovery Phone", "Set a phone number for account recovery.", false],
-                ].map(([icon,title,desc,enabled]) => (
-                  <div key={title} style={{ border:"1px solid #eee", borderRadius:12, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <span style={{ fontSize:20 }}>{icon}</span>
-                      <div>
-                        <div style={{ fontSize:12, fontWeight:600 }}>{title}</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+
+              <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
+                <div style={{ fontSize:14, fontWeight:600, marginBottom:4 }}>Contact Verification</div>
+                <div style={{ fontSize:11, color:"#888", marginBottom:14 }}>OTP-based password reset uses your registered mobile number. Verify it so you can reset your password if you ever get locked out.</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  {[
+                    ["✉", "Email Address", account?.email || "Not set", account?.email_verified, "email"],
+                    ["📞", "Mobile Number", account?.mobile_display || account?.mobile_number || "Not set", account?.mobile_verified, "mobile"],
+                  ].map(([icon,title,val,verified,field]) => (
+                    <div key={field} style={{ border:"1px solid #eee", borderRadius:12, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <span style={{ fontSize:20 }}>{icon}</span>
+                        <div>
+                          <div style={{ fontSize:12, fontWeight:600 }}>{title}</div>
+                          <div style={{ fontSize:10, color:"#888" }}>{val}</div>
+                          {verified && <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background:"#EAF3DE", color:"#27500A", marginTop:4, display:"inline-block" }}>✅ Verified</span>}
+                        </div>
+                      </div>
+                      {field === "mobile" && !verified && val !== "Not set" && (
+                        <button onClick={() => startVerify(field)} style={{ padding:"6px 12px", background:P, color:"#fff", borderRadius:6, fontSize:10, fontWeight:500, border:"none", cursor:"pointer" }}>Verify</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop:12, fontSize:11, color:"#888" }}>
+                  Note: changing your mobile number in Account Information will reset its verification status. All OTPs are delivered to your mobile number only.
+                </div>
+              </div>
+
+              <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
+                <div style={{ fontSize:14, fontWeight:600, marginBottom:4 }}>Password</div>
+                <div style={{ fontSize:11, color:"#888", marginBottom:14 }}>
+                  For your security, changing your password requires an OTP sent to your registered email and will log out all devices.
+                </div>
+                <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                  <button onClick={openPwModal} style={{ padding:"9px 20px", background:P, color:"#fff", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>🔒 Change Password</button>
+                  <span style={{ fontSize:11, color:"#888" }}>Last changed: {account?.last_password_changed ? new Date(account.last_password_changed).toLocaleDateString() : "Never"}</span>
+                </div>
+                {account?.force_password_reset && (
+                  <div style={{ marginTop:12, background:"#FDF3D7", color:"#8a6d1a", padding:"10px 14px", borderRadius:8, fontSize:12 }}>
+                    ⚠ An administrator has requested you to change your password. Please do so now.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background:"#fff", borderRadius:16, padding:"18px 20px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" }}>
+                <div style={{ fontSize:14, fontWeight:600, marginBottom:4 }}>Recent Login Activity</div>
+                <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>Login and security events on your account.</div>
+                <div style={{ maxHeight:240, overflowY:"auto" }}>
+                  {[
+                    ["🟢", "Successful Login", "Session created", "—"],
+                  ].map(([icon,title,desc,time]) => (
+                    <div key={title} style={{ display:"flex", gap:8, padding:"7px 0", borderBottom:"1px solid #f5f5f5" }}>
+                      <span style={{ fontSize:14, width:20 }}>{icon}</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:11, fontWeight:500, color:"#1a1a1a" }}>{title}</div>
                         <div style={{ fontSize:10, color:"#888" }}>{desc}</div>
                       </div>
+                      <div style={{ fontSize:9, color:"#aaa", whiteSpace:"nowrap" }}>{time}</div>
                     </div>
-                    <div style={{ width:36,height:20,borderRadius:10,background:enabled?P:"#ddd",position:"relative",cursor:"pointer",transition:"0.2s" }}>
-                      <div style={{ width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:2,left:enabled?18:2,transition:"0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -402,8 +538,7 @@ export default function Settings() {
                 </thead>
                 <tbody>
                   {[
-                    ["💻 Windows PC","Chrome 126","Windows 11","192.168.1.1","2 hours ago","Noida, IN","Current Session"],
-                    ["📱 iPhone 15","Safari","iOS 18","192.168.1.2","Yesterday","Delhi, IN","Logout"],
+                    ["💻 Windows PC","Chrome","Windows 11","192.168.1.1","Current","—","Current Session"],
                   ].map(([device,browser,os,ip,time,loc,action]) => (
                     <tr key={device} style={{ borderBottom:"1px solid #f5f5f5" }}>
                       <td style={{ padding:"8px 10px", fontWeight:500 }}>{device}</td>
@@ -465,34 +600,135 @@ export default function Settings() {
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
           <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", width:460 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-              <span style={{ fontSize:16, fontWeight:600 }}>Edit Account</span>
+              <span style={{ fontSize:16, fontWeight:600 }}>Edit Account Information</span>
               <span style={{ cursor:"pointer", color:"#888", fontSize:22 }} onClick={() => setEditModal(false)}>×</span>
             </div>
-            {[["Full Name","name"],["Email","email"],["Designation","designation"]].map(([label,key]) => (
-              <div key={key} style={{ marginBottom:12 }}>
-                <label style={{ fontSize:11,color:"#555",display:"block",marginBottom:3 }}>{label}</label>
-                <input value={editForm[key]||""} onChange={e => setEditForm({...editForm,[key]:e.target.value})} style={{ width:"100%",padding:"7px 10px",border:"1px solid #ddd",borderRadius:8,fontSize:12 }} />
-              </div>
-            ))}
+            <div style={{ marginBottom:12 }}>
+              <label style={{ fontSize:11,color:"#555",display:"block",marginBottom:3 }}>Email address</label>
+              <input value={editEmail} onChange={e => setEditEmail(e.target.value)} style={{ width:"100%",padding:"7px 10px",border:"1px solid #ddd",borderRadius:8,fontSize:12 }} />
+            </div>
+            <div style={{ marginBottom:18 }}>
+              <label style={{ fontSize:11,color:"#555",display:"block",marginBottom:3 }}>Mobile number</label>
+              <input value={editMobile} onChange={e => setEditMobile(e.target.value)} placeholder="98XXXXXXXX" style={{ width:"100%",padding:"7px 10px",border:"1px solid #ddd",borderRadius:8,fontSize:12 }} />
+            </div>
+            <div style={{ fontSize:11, color:"#888", marginBottom:16 }}>
+              Changing your email or mobile will reset its verification status. You'll be able to verify it with an OTP.
+            </div>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={() => setEditModal(false)} style={{ flex:1,padding:10,border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",cursor:"pointer" }}>Cancel</button>
-              <button disabled={saving} onClick={handleEditSave} style={{ flex:2,padding:10,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Saving...":"Save Changes"}</button>
+              <button disabled={saving} onClick={saveAccountInfo} style={{ flex:2,padding:10,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Saving...":"Save Changes"}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ═══ CONFIRM LOGOUT ═══ */}
-      {confirmLogout && (
+      {/* ═══ OTP / CHANGE PASSWORD MODAL ═══ */}
+      {pwModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
-          <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", width:380, textAlign:"center" }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>🚪</div>
-            <div style={{ fontSize:16, fontWeight:600, marginBottom:6 }}>Logout?</div>
-            <div style={{ fontSize:12, color:"#888", marginBottom:18 }}>Are you sure you want to end your session?</div>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => setConfirmLogout(false)} style={{ flex:1,padding:10,border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",cursor:"pointer" }}>Cancel</button>
-              <button onClick={() => { localStorage.clear(); window.location.href = "/"; }} style={{ flex:1,padding:10,background:"#A32D2D",color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>Logout</button>
+          <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", width:440 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <span style={{ fontSize:16, fontWeight:600 }}>
+                {pwAction === "verify_contact" ? "Verify Mobile Number" : "Change Password"}
+              </span>
+              <span style={{ cursor:"pointer", color:"#888", fontSize:22 }} onClick={() => setPwModal(false)}>×</span>
             </div>
+
+            {pwError && <div style={{ background:"#FCEBEB", color:"#791F1F", padding:"10px 14px", borderRadius:8, fontSize:12, marginBottom:12 }}>{pwError}</div>}
+            {pwSuccess && <div style={{ background:"#E9F7EF", color:"#1B7A45", padding:"10px 14px", borderRadius:8, fontSize:12, marginBottom:12 }}>{pwSuccess}</div>}
+
+            {pwStep === 0 && (
+              <div>
+                <div style={{ fontSize:13, color:"#444", marginBottom:14 }}>
+                  {pwAction === "verify_contact"
+                    ? "We'll send a 6-digit OTP by SMS to your registered mobile number to verify it."
+                    : "Verify your identity with a 6-digit OTP sent to your registered email address."}
+                </div>
+                {account?.email ? (
+                  <div style={{ padding:"12px 14px", background:"#F5F5FB", borderRadius:10, marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div>
+                      <div style={{ fontSize:10, color:"#888" }}>Registered email</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#1a1a1a", wordBreak:"break-all" }}>{account?.email}</div>
+                    </div>
+                    {account?.email_verified ? <span style={{ fontSize:9, padding:"2px 8px", borderRadius:6, background:"#EAF3DE", color:"#27500A" }}>✅ Verified</span> : null}
+                  </div>
+                ) : (
+                  <div style={{ padding:"12px 14px", background:"#FCEBEB", borderRadius:10, marginBottom:14, fontSize:12, color:"#791F1F" }}>
+                    No registered email found on this account.
+                  </div>
+                )}
+                {account?.email ? (
+                  <button onClick={sendOtp} disabled={pwLoading} style={{ width:"100%",padding:11,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>
+                    {pwLoading ? "Sending..." : "Send OTP to Email →"}
+                  </button>
+                ) : (
+                  <button onClick={() => { setPwModal(false); setTab("account"); }} style={{ width:"100%",padding:11,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>
+                    Update Email Address →
+                  </button>
+                )}
+              </div>
+            )}
+
+            {pwStep === 1 && (
+              <div>
+                <div style={{ fontSize:13, color:"#444", marginBottom:8 }}>
+                  We sent a 6-digit code to your registered email <b style={{ color:P }}>{pwMasked}</b>.
+                </div>
+                <div style={{ fontSize:22, fontWeight:700, color:P, textAlign:"center", marginBottom:14 }}>
+                  {fmtTimer(resendIn)}
+                </div>
+                <OtpInput key={otpKey.current} length={6} onChange={handleOtpChange} />
+                <div style={{ textAlign:"center", marginTop:14, fontSize:12, color:"#888" }}>
+                  {resendIn > 0 ? <>Resend available after the countdown</> : (
+                    <span onClick={resendOtp} style={{ color:P, cursor:"pointer", fontWeight:600 }}>Resend code</span>
+                  )}
+                </div>
+                {pwAction === "verify_contact" ? (
+                  <button onClick={confirmVerify} disabled={pwOtp.length !== 6 || pwLoading} style={{ width:"100%",padding:11,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer",marginTop:16,opacity: pwOtp.length===6?1:0.5 }}>
+                    {pwLoading ? "Verifying..." : "Verify Mobile →"}
+                  </button>
+                ) : (
+                  <button onClick={verifyOtp} disabled={pwOtp.length !== 6 || pwLoading} style={{ width:"100%",padding:11,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer",marginTop:16,opacity: pwOtp.length===6?1:0.5 }}>
+                    {pwLoading ? "Verifying..." : "Verify OTP →"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {pwStep === 2 && !pwAction && (
+              <div>
+                <div style={{ fontSize:13, color:"#444", marginBottom:14 }}>Choose a strong password you haven't used before.</div>
+                <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:4 }}>New password</label>
+                <input type="password" value={pwNew} onChange={e => handlePwStrength(e.target.value)} style={{ width:"100%",padding:"9px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:13,boxSizing:"border-box" }} />
+                <label style={{ fontSize:12, color:"#555", display:"block", marginBottom:4, marginTop:12 }}>Confirm password</label>
+                <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} style={{ width:"100%",padding:"9px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:13,boxSizing:"border-box" }} />
+                {pwNew && (
+                  <div style={{ marginTop:12 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                      <span style={{ fontSize:16 }}>{pwStrength === "strong" ? "🟢" : pwStrength === "medium" ? "🟡" : "🔴"}</span>
+                      <span style={{ fontSize:12, fontWeight:600, color:"#444" }}>{pwStrength === "strong" ? "Strong" : pwStrength === "medium" ? "Medium" : "Weak"}</span>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:5 }}>
+                      {pwRules.map(r => (
+                        <div key={r.label} style={{ fontSize:11, color: r.passed ? "#1B7A45" : "#999" }}>{r.passed ? "✓" : "•"} {r.label}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button onClick={confirmPassword} disabled={pwLoading} style={{ width:"100%",padding:11,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer",marginTop:16 }}>
+                  {pwLoading ? "Updating..." : "Update Password"}
+                </button>
+              </div>
+            )}
+
+            {pwStep === 3 && (
+              <div style={{ textAlign:"center", padding:"10px 0" }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>🎉</div>
+                <div style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>Password changed</div>
+                <div style={{ fontSize:12, color:"#888", marginBottom:18 }}>All sessions have been logged out. Please login again.</div>
+                <button onClick={finishPw} style={{ width:"100%",padding:11,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>Go to Login</button>
+              </div>
+            )}
+
           </div>
         </div>
       )}

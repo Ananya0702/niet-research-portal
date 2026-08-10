@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.database import get_db, Base
-from app.models import Faculty, Department, School, Publication, CitationYearly, Project, Patent
+from app.models import Faculty, Department, School, Publication, CitationYearly, Project, Patent, SecurityAuditLog
 from app.security import get_password_hash, verify_password, create_access_token, decode_token
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime as dt
@@ -183,6 +184,16 @@ def get_all_faculty(db: Session = Depends(get_db),
             "last_orcid_sync":     f.last_orcid_sync.isoformat() if f.last_orcid_sync else None,
             "last_scopus_sync":    f.last_scopus_sync.isoformat() if f.last_scopus_sync else None,
             "is_active":         f.is_active,
+            "mobile_number":     f.mobile_number,
+            "phone":             f.phone,
+            "employee_id":       f.employee_id,
+            "email_verified":    bool(f.email_verified),
+            "mobile_verified":   bool(f.mobile_verified),
+            "last_password_changed": f.last_password_changed.isoformat() if f.last_password_changed else None,
+            "force_password_reset":  bool(f.force_password_reset),
+            "failed_attempts":   f.failed_attempts or 0,
+            "locked":            bool(f.lock_until and f.lock_until > dt.now()),
+            "lock_until":        f.lock_until.isoformat() if f.lock_until else None,
         }
         for f in faculty
     ]
@@ -588,3 +599,260 @@ def get_faculty_details(db: Session = Depends(get_db),
         })
 
     return result
+
+
+# ── Security management (admin) ──────────────────────────────────────────────
+class AdminResetPassword(BaseModel):
+    new_password: str
+
+class AdminVerifyContact(BaseModel):
+    field: str  # email | mobile
+
+class AdminSendResetEmail(BaseModel):
+    pass
+
+@router.get("/security/overview")
+def security_overview(db: Session = Depends(get_db),
+                      current=Depends(get_current_admin)):
+    """Summary stats for the admin security panel."""
+    now = dt.now()
+    faculty = db.query(Faculty).all()
+    locked = [f for f in faculty if f.lock_until and f.lock_until > now]
+    force = [f for f in faculty if f.force_password_reset]
+    unverified_email = [f for f in faculty if f.email and not f.email_verified]
+    unverified_mobile = [f for f in faculty if f.mobile_number and not f.mobile_verified]
+    otp_count = db.query(func.count(SecurityAuditLog.log_id)).filter(
+        SecurityAuditLog.action.in_(["otp_generated"])).scalar() or 0
+    return {
+        "total_faculty": len(faculty),
+        "locked_accounts": len(locked),
+        "force_reset": len(force),
+        "unverified_email": len(unverified_email),
+        "unverified_mobile": len(unverified_mobile),
+        "otp_sent_total": otp_count,
+        "failed_logins": db.query(func.count(SecurityAuditLog.log_id)).filter(
+            SecurityAuditLog.action == "login_failed").scalar() or 0,
+    }
+
+
+@router.get("/security/logs")
+def security_logs(scope: str = "all", faculty_id: Optional[int] = None,
+                  limit: int = 100,
+                  db: Session = Depends(get_db),
+                  current=Depends(get_current_admin)):
+    q = db.query(SecurityAuditLog)
+    if scope == "otp":
+        q = q.filter(SecurityAuditLog.action.in_(["otp_generated", "otp_verified", "otp_failed"]))
+    elif scope == "password":
+        q = q.filter(SecurityAuditLog.action.in_(["password_changed", "password_reset", "forced_reset"]))
+    elif scope == "login":
+        q = q.filter(SecurityAuditLog.action.in_(["login_success", "login_failed", "account_locked"]))
+    if faculty_id:
+        q = q.filter(SecurityAuditLog.faculty_id == faculty_id)
+    rows = q.order_by(SecurityAuditLog.log_id.desc()).limit(min(limit, 500)).all()
+    names = {f.faculty_id: f.name for f in db.query(Faculty).all()}
+    return [
+        {
+            "log_id": r.log_id,
+            "faculty_id": r.faculty_id,
+            "faculty_name": names.get(r.faculty_id, "—"),
+            "action": r.action,
+            "status": r.status,
+            "method": r.method,
+            "detail": r.detail,
+            "ip_address": r.ip_address,
+            "browser": r.browser,
+            "device": r.device,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/security/faculty/{faculty_id}")
+def security_faculty_status(faculty_id: int, db: Session = Depends(get_db),
+                            current=Depends(get_current_admin)):
+    f = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    return {
+        "faculty_id": f.faculty_id,
+        "name": f.name,
+        "email": f.email,
+        "email_verified": bool(f.email_verified),
+        "mobile_number": f.mobile_number,
+        "mobile_verified": bool(f.mobile_verified),
+        "force_password_reset": bool(f.force_password_reset),
+        "failed_attempts": f.failed_attempts or 0,
+        "locked": bool(f.lock_until and f.lock_until > dt.now()),
+        "lock_until": f.lock_until.isoformat() if f.lock_until else None,
+        "last_password_changed": f.last_password_changed.isoformat() if f.last_password_changed else None,
+    }
+
+
+@router.post("/security/faculty/{faculty_id}/verify-contact")
+def security_verify_contact(faculty_id: int, payload: AdminVerifyContact,
+                            db: Session = Depends(get_db),
+                            current=Depends(get_current_admin)):
+    f = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    if payload.field == "email":
+        if not f.email:
+            raise HTTPException(status_code=400, detail="No email to verify")
+        f.email_verified = True
+    elif payload.field == "mobile":
+        if not f.mobile_number:
+            raise HTTPException(status_code=400, detail="No mobile number to verify")
+        f.mobile_verified = True
+    else:
+        raise HTTPException(status_code=400, detail="Invalid field")
+    db.commit()
+    db.add(SecurityAuditLog(faculty_id=faculty_id, action="contact_verified",
+                            status="success", method=payload.field,
+                            detail=f"Admin verified {payload.field}",
+                            ip_address=current.get("email", "admin")))
+    db.commit()
+    return {"message": f"{payload.field} verified"}
+
+
+@router.post("/security/faculty/{faculty_id}/reset-password")
+def security_admin_reset_password(faculty_id: int, payload: AdminResetPassword,
+                                  db: Session = Depends(get_db),
+                                  current=Depends(get_current_admin)):
+    from app.security_otp import parse_user_agent
+    from app.notifier import password_reset_email
+    from app.password_policy import policy_errors, record_password
+    f = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    errors = policy_errors(payload.new_password)
+    if errors:
+        raise HTTPException(status_code=400, detail=errors[0])
+    from app.security import get_password_hash as gph
+    record_password(f, f.password_hash or "")
+    f.password_hash = gph(payload.new_password)
+    f.last_password_changed = dt.now()
+    f.token_version = (f.token_version or 0) + 1
+    f.failed_attempts = 0
+    f.lock_until = None
+    f.force_password_reset = False
+    f.otp_hash = None
+    db.commit()
+    db.add(SecurityAuditLog(faculty_id=faculty_id, action="password_reset",
+                            status="success",
+                            detail="Password reset by administrator",
+                            ip_address=current.get("email", "admin")))
+    db.commit()
+    try:
+        password_reset_email(f.email, {
+            "date": dt.now().strftime("%d %b %Y"),
+            "time": dt.now().strftime("%I:%M %p"),
+            "ip": current.get("email", "admin"),
+            "browser": "Administrator",
+            "device": "Admin Console",
+        })
+    except Exception:
+        pass
+    return {"message": "Password reset successfully"}
+
+
+@router.post("/security/faculty/{faculty_id}/force-reset")
+def security_force_reset(faculty_id: int, db: Session = Depends(get_db),
+                         current=Depends(get_current_admin)):
+    from app.notifier import force_reset_email
+    f = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    f.force_password_reset = True
+    f.token_version = (f.token_version or 0) + 1  # log them out
+    db.commit()
+    db.add(SecurityAuditLog(faculty_id=faculty_id, action="forced_reset",
+                            status="success", detail="Force password reset requested by admin",
+                            ip_address=current.get("email", "admin")))
+    db.commit()
+    try:
+        force_reset_email(f.email, {
+            "date": dt.now().strftime("%d %b %Y"),
+            "requested_by": current.get("email", "Administrator"),
+        })
+    except Exception:
+        pass
+    return {"message": "Force password reset requested. User will be logged out."}
+
+
+@router.post("/security/faculty/{faculty_id}/unlock")
+def security_unlock(faculty_id: int, db: Session = Depends(get_db),
+                    current=Depends(get_current_admin)):
+    from app.notifier import account_unlocked_email
+    f = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    f.lock_until = None
+    f.failed_attempts = 0
+    db.commit()
+    db.add(SecurityAuditLog(faculty_id=faculty_id, action="account_unlocked",
+                            status="success", detail="Account unlocked by administrator",
+                            ip_address=current.get("email", "admin")))
+    db.commit()
+    try:
+        account_unlocked_email(f.email, {
+            "date": dt.now().strftime("%d %b %Y"),
+            "requested_by": current.get("email", "Administrator"),
+        })
+    except Exception:
+        pass
+    return {"message": "Account unlocked"}
+
+# ── Bulk Import (CSV / XLSX) ────────────────────────────────────────────────
+class ImportRequest(BaseModel):
+    mode:    str = "upsert"        # insert | update | upsert
+    dry_run: bool = True
+    rows:    List[dict] = []
+
+@router.post("/import/{entity}")
+def bulk_import(entity: str, req: ImportRequest,
+                db: Session = Depends(get_db),
+                current=Depends(get_current_admin)):
+    """Import rows (JSON array of dicts) for schools | departments | faculty."""
+    from app.bulk_import import run_import
+    try:
+        return run_import(db, entity, req.rows, req.mode, req.dry_run,
+                          actor=current.get("email", "admin"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/import/{entity}/file")
+def bulk_import_file(entity: str,
+                     file: UploadFile = File(...),
+                     mode: str = Form("upsert"),
+                     dry_run: bool = Form(False),
+                     db: Session = Depends(get_db),
+                     current=Depends(get_current_admin)):
+    """Import from an uploaded CSV or XLSX file."""
+    from app.bulk_import import run_import, parse_rows
+    content = file.file.read()
+    rows = parse_rows(file.filename or "upload.csv", content)
+    try:
+        return run_import(db, entity, rows, mode, dry_run,
+                          actor=current.get("email", "admin"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/import/template/{entity}")
+def import_template(entity: str,
+                    sample: bool = False,
+                    fmt: str = "csv",
+                    current=Depends(get_current_admin)):
+    """Download an import template (CSV or XLSX) for the given entity."""
+    from app.bulk_import import generate_template_csv, generate_template_xlsx
+    if fmt == "xlsx":
+        data = generate_template_xlsx(entity, sample)
+        return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{entity}_template.xlsx"'})
+    try:
+        data = generate_template_csv(entity, sample)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(content=data, media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{entity}_template.csv"'})

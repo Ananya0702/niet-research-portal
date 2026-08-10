@@ -23,6 +23,10 @@ export default function Login() {
       localStorage.setItem("faculty_id", res.data.faculty_id);
       localStorage.setItem("role",       res.data.role);
       localStorage.setItem("name",       res.data.name);
+      if (res.data.force_password_reset) {
+        window.location.href = "/settings";
+        return;
+      }
       if (res.data.role === "hod")          window.location.href = "/hod/dashboard";
       else if (res.data.role === "dean_rd") window.location.href = "/dean/dashboard";
       else                                  window.location.href = "/dashboard";
@@ -31,6 +35,8 @@ export default function Login() {
         setError("Cannot reach the server. Is the backend running?");
       } else if (err.response.status === 401) {
         setError("Invalid email or password. Please try again.");
+      } else if (err.response.status === 423) {
+        setError(err.response?.data?.detail || "Account temporarily locked. Try again later.");
       } else {
         setError(err.response?.data?.detail || "Login failed. Please try again.");
       }
@@ -140,10 +146,12 @@ export default function Login() {
 
             {/* Forgot password */}
             <div style={{ textAlign: "right", marginBottom: 24 }}>
-              <span style={{ fontSize: 12, color: "#534AB7", cursor: "pointer" }}
-                onClick={() => alert("Contact your administrator to reset your password.")}>
+              <a href="/forgot-password" style={{
+                fontSize: 12, color: "#534AB7", cursor: "pointer",
+                textDecoration: "none", fontWeight: 500,
+              }}>
                 Forgot password?
-              </span>
+              </a>
             </div>
 
             <button type="submit" disabled={loading} style={{

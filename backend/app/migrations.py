@@ -27,6 +27,23 @@ ADD_MIGRATIONS = [
     ("faculty", "last_scholar_sync",   "DATETIME"),
     ("faculty", "last_orcid_sync",     "DATETIME"),
     ("faculty", "last_scopus_sync",    "DATETIME"),
+    ("faculty", "mobile_number",       "VARCHAR(20)"),
+    ("faculty", "mobile_country_code", "VARCHAR(6)"),
+    ("faculty", "email_verified",      "TINYINT(1)"),
+    ("faculty", "mobile_verified",     "TINYINT(1)"),
+    ("faculty", "otp_hash",            "VARCHAR(255)"),
+    ("faculty", "otp_expiry",          "DATETIME"),
+    ("faculty", "otp_attempts",        "INTEGER"),
+    ("faculty", "otp_resend_count",    "INTEGER"),
+    ("faculty", "otp_last_sent",       "DATETIME"),
+    ("faculty", "otp_method",          "VARCHAR(10)"),
+    ("faculty", "last_password_changed","DATETIME"),
+    ("faculty", "password_history",    "TEXT"),
+    ("faculty", "failed_attempts",     "INTEGER"),
+    ("faculty", "lock_until",          "DATETIME"),
+    ("faculty", "token_version",       "INTEGER"),
+    ("faculty", "force_password_reset","TINYINT(1)"),
+    ("faculty", "updated_at",          "DATETIME"),
     ("publications", "authors",             "VARCHAR(1000)"),
     ("publications", "source_platform",     "VARCHAR(30)"),
     ("publications", "source_id",           "VARCHAR(200)"),
@@ -47,6 +64,25 @@ ADD_MIGRATIONS = [
 
 # (ddl) — idempotent CREATE TABLE IF NOT EXISTS for new tables.
 CREATE_MIGRATIONS = [
+    (
+        "security_audit_logs",
+        """CREATE TABLE IF NOT EXISTS security_audit_logs (
+            log_id       INT AUTO_INCREMENT PRIMARY KEY,
+            faculty_id   INT NULL,
+            action       VARCHAR(60) NOT NULL,
+            ip_address   VARCHAR(60) NULL,
+            user_agent   VARCHAR(300) NULL,
+            device       VARCHAR(60) NULL,
+            browser      VARCHAR(60) NULL,
+            method       VARCHAR(10) NULL,
+            status       VARCHAR(10) DEFAULT 'success',
+            detail       VARCHAR(500) NULL,
+            created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_sal_faculty (faculty_id),
+            INDEX idx_sal_action (action),
+            INDEX idx_sal_created (created_at)
+        )""",
+    ),
     (
         "announcement_notifications",
         """CREATE TABLE IF NOT EXISTS announcement_notifications (

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import API from "../services/api";
 import * as XLSX from "xlsx";
+import ImportWizard from "../components/ImportWizard";
 
 const P = "#5B3DF5";
 const SIDEBAR = "#1A1626";
@@ -21,6 +22,7 @@ const SIDEBAR_ITEMS = [
     { key: "add-faculty",icon: "➕", label: "Add Faculty" },
   ]},
   { section: "System", items: [
+    { key: "security",   icon: "🔐", label: "Security" },
     { key: "export",    icon: "📥", label: "Export Data" },
   ]},
 ];
@@ -56,6 +58,7 @@ export default function AdminPanel() {
   const [deptModal, setDeptModal] = useState(false);
   const [schoolForm, setSchoolForm] = useState({ school_name:"" });
   const [deptForm, setDeptForm] = useState({ school_id:"", dept_code:"", dept_name:"", hod_faculty_id:"", established_year:"" });
+  const [importEntity, setImportEntity] = useState(null);
 
   const [activeTab, setActiveTab] = useState("faculty");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -258,19 +261,22 @@ export default function AdminPanel() {
           {activeView==="overview" && dashboard && <OverviewView {...{dashboard,schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,setModal,handleDeactivate,handleDelete,P,viewFacultyProfile}} />}
 
           {/* ═══ SCHOOLS ═══ */}
-          {activeView==="schools" && <SchoolsView {...{schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,P}} />}
+          {activeView==="schools" && <SchoolsView {...{schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,P,setImportEntity}} />}
 
           {/* ═══ DEPARTMENTS ═══ */}
-          {activeView==="depts" && <DeptsView {...{depts,schools,faculty,setDeptModal,setEditModal,setEditForm,handleDeleteDept,P}} />}
+          {activeView==="depts" && <DeptsView {...{depts,schools,faculty,setDeptModal,setEditModal,setEditForm,handleDeleteDept,P,setImportEntity}} />}
 
           {/* ═══ FACULTY ═══ */}
-          {activeView==="faculty" && <FacultyView {...{faculty,loading,filteredFaculty,roleFilter,setRoleFilter,deptFilter,setDeptFilter,depts,setModal,setEditModal,setEditForm,handleDeactivate,handleDelete,P,viewFacultyProfile,syncing,handleAdminSync}} />}
+          {activeView==="faculty" && <FacultyView {...{faculty,loading,filteredFaculty,roleFilter,setRoleFilter,deptFilter,setDeptFilter,depts,setModal,setEditModal,setEditForm,handleDeactivate,handleDelete,P,viewFacultyProfile,syncing,handleAdminSync,setImportEntity}} />}
 
           {/* ═══ FACULTY DETAILS ═══ */}
           {activeView==="faculty-details" && <FacultyDetailsView {...{facultyDetails,facultyDetailsLoading,fdSearch,setFdSearch,fdRoleFilter,setFdRoleFilter,fdDeptFilter,setFdDeptFilter,depts,expandedFac,setExpandedFac,P,fdViewing,setFdViewing}} />}
 
           {/* ═══ EXPORT ═══ */}
           {activeView==="export" && <ExportView {...{faculty,schools,depts,P,showMsg,setActiveView}} />}
+
+          {/* ═══ SECURITY ═══ */}
+          {activeView==="security" && <SecurityView {...{apiGet,apiPost,P,showMsg}} />}
 
           {/* ═══ FACULTY PROFILE ═══ */}
           {showFacultyProfile && (
@@ -343,6 +349,9 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+
+      {/* Bulk Import Wizard */}
+      {importEntity && <ImportWizard entity={importEntity} P={P} onClose={()=>setImportEntity(null)} onDone={()=>{fetchSchools(); fetchDepts(); fetchFaculty(); fetchDashboard();}} />}
 
     </div>
   );
@@ -1168,7 +1177,7 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
   );
 }
 
-function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedSchools, selSchoolId, setSelSchoolId, setSchoolModal, setDeptModal, handleDeleteSchool, handleDeleteDept, setEditModal, setEditForm, P }) {
+function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedSchools, selSchoolId, setSelSchoolId, setSchoolModal, setDeptModal, handleDeleteSchool, handleDeleteDept, setEditModal, setEditForm, P, setImportEntity }) {
   const selSchool = schools.find(s=>s.school_id===selSchoolId)||null;
   const selSchoolDepts = selSchool ? depts.filter(d=>d.school_id===selSchool.school_id) : [];
   const selSchoolFaculty = selSchool ? faculty.filter(f=>selSchoolDepts.some(d=>d.dept_id===f.dept_id)) : [];
@@ -1203,6 +1212,7 @@ function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedScho
           })}
         </div>
         <button onClick={()=>setSchoolModal(true)} style={{ width:"100%", marginTop:12, padding:"8px", background:P, color:"#fff", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add School</button>
+        <button onClick={()=>setImportEntity("schools")} style={{ width:"100%", marginTop:8, padding:"8px", background:"#fff", color:P, borderRadius:8, fontSize:12, fontWeight:500, border:"1px solid "+P, cursor:"pointer" }}>📥 Import Schools</button>
       </div>
       <div style={{ flex:1, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16 }}>
         {selSchool ? (
@@ -1253,7 +1263,7 @@ function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedScho
   );
 }
 
-function DeptsView({ depts, schools, faculty, setDeptModal, setEditModal, setEditForm, handleDeleteDept, P }) {
+function DeptsView({ depts, schools, faculty, setDeptModal, setEditModal, setEditForm, handleDeleteDept, P, setImportEntity }) {
   const [deptSearch, setDeptSearch] = useState("");
   const [schoolFilter, setSchoolFilter] = useState("all");
   const filtered = depts.filter(d=>{
@@ -1269,6 +1279,7 @@ function DeptsView({ depts, schools, faculty, setDeptModal, setEditModal, setEdi
           <div style={{ fontSize:11, color:"#888", marginTop:2 }}>Total: {depts.length} departments across {schools.length} schools</div>
         </div>
         <button onClick={()=>setDeptModal(true)} style={{ background:P, color:"#fff", padding:"8px 20px", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add Department</button>
+        <button onClick={()=>setImportEntity("departments")} style={{ background:"#fff", color:P, padding:"8px 16px", borderRadius:8, fontSize:12, fontWeight:500, border:"1px solid "+P, cursor:"pointer" }}>📥 Import</button>
       </div>
       <div style={{ display:"flex", gap:10, marginBottom:14 }}>
         <input value={deptSearch} onChange={e=>setDeptSearch(e.target.value)} placeholder="Search departments..." style={{ padding:"7px 12px", border:"1px solid #e0e0e8", borderRadius:8, fontSize:12, width:260, outline:"none", background:"#f8f8fb" }} />
@@ -1311,7 +1322,7 @@ function DeptsView({ depts, schools, faculty, setDeptModal, setEditModal, setEdi
   );
 }
 
-function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFilter, deptFilter, setDeptFilter, depts, setModal, setEditModal, setEditForm, handleDeactivate, handleDelete, P, viewFacultyProfile, syncing, handleAdminSync }) {
+function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFilter, deptFilter, setDeptFilter, depts, setModal, setEditModal, setEditForm, handleDeactivate, handleDelete, P, viewFacultyProfile, syncing, handleAdminSync, setImportEntity }) {
   const PlatformBadges = ({ f }) => {
     const items = [
       { key:"scholar", label:"Scholar", connected:f.scholar_connected },
@@ -1338,6 +1349,7 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
           <div style={{ fontSize:11, color:"#888", marginTop:2 }}>Total: {faculty.length} faculty members</div>
         </div>
         <button onClick={()=>{setModal(true);}} style={{ background:P, color:"#fff", padding:"8px 20px", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>+ Add Faculty</button>
+        <button onClick={()=>setImportEntity("faculty")} style={{ background:"#fff", color:P, padding:"8px 16px", borderRadius:8, fontSize:12, fontWeight:500, border:"1px solid "+P, cursor:"pointer" }}>📥 Import</button>
       </div>
       <div style={{ display:"flex", gap:10, marginBottom:14 }}>
         <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
@@ -1607,6 +1619,226 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ SECURITY VIEW ═══ */
+function SecurityView({ apiGet, apiPost, P, showMsg }) {
+  const [overview, setOverview] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [faculty, setFaculty] = useState([]);
+  const [facultyId, setFacultyId] = useState("");
+  const [facStatus, setFacStatus] = useState(null);
+  const [logScope, setLogScope] = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [resetModal, setResetModal] = useState(null);   // {faculty_id, name, email}
+  const [resetPass, setResetPass] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const [ov, lg, fc] = await Promise.all([
+        apiGet("/admin/security/overview"),
+        apiGet("/admin/security/logs", { params: { scope: logScope, limit: 100 } }),
+        apiGet("/admin/faculty"),
+      ]);
+      setOverview(ov.data); setLogs(lg.data); setFaculty(fc.data);
+    } catch (e) { showMsg("error", "Failed to load security data"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchAll(); }, [logScope]); // eslint-disable-line
+
+  const loadFacultyStatus = async (id) => {
+    if (!id) return;
+    try { const r = await apiGet(`/admin/security/faculty/${id}`); setFacStatus(r.data); }
+    catch (e) { showMsg("error", e.response?.data?.detail || "Failed"); setFacStatus(null); }
+  };
+
+  const act = async (fn, msgText) => {
+    setBusy(true);
+    try { await fn(); showMsg("success", msgText); fetchAll(); loadFacultyStatus(facultyId); }
+    catch (e) { showMsg("error", e.response?.data?.detail || "Action failed"); }
+    finally { setBusy(false); }
+  };
+
+  const cardStyle = { background:"#fff", borderRadius:14, padding:"16px 18px", boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5" };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      {loading && <div className="spinner" style={{ margin:"40px auto" }} />}
+      {!loading && overview && (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))", gap:12 }}>
+          {[
+            ["👥", "Total Faculty", overview.total_faculty, "#5B3DF5"],
+            ["🔒", "Locked Accounts", overview.locked_accounts, overview.locked_accounts ? "#A32D2D" : "#5B3DF5"],
+            ["🔄", "Force Reset", overview.force_reset, overview.force_reset ? "#E6A23C" : "#5B3DF5"],
+            ["✉", "Unverified Email", overview.unverified_email, "#5B3DF5"],
+            ["📱", "Unverified Mobile", overview.unverified_mobile, "#5B3DF5"],
+            ["⚠️", "Failed Logins", overview.failed_logins, "#5B3DF5"],
+          ].map(([icon,label,val,color]) => (
+            <div key={label} style={{ ...cardStyle, display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ fontSize:22 }}>{icon}</span>
+              <div>
+                <div style={{ fontSize:20, fontWeight:700, color }}>{val}</div>
+                <div style={{ fontSize:11, color:"#888" }}>{label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Faculty status lookup */}
+      <div style={cardStyle}>
+        <div style={{ fontSize:13, fontWeight:600, marginBottom:10 }}>Faculty Account Status</div>
+        <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+          <select value={facultyId} onChange={e => { setFacultyId(e.target.value); setFacStatus(null); }}
+            style={{ ...inp, width:260, padding:"9px 12px" }}>
+            <option value="">— Select faculty —</option>
+            {faculty.map(f => (
+              <option key={f.faculty_id} value={f.faculty_id}>{f.name} ({f.email})</option>
+            ))}
+          </select>
+          <button onClick={() => loadFacultyStatus(facultyId)} style={{ padding:"9px 18px", background:P, color:"#fff", borderRadius:8, fontSize:12, fontWeight:500, border:"none", cursor:"pointer" }}>Load Status</button>
+        </div>
+
+        {facStatus && (
+          <div style={{ marginTop:14, border:"1px solid #eee", borderRadius:10, padding:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:8, marginBottom:12 }}>
+              {[
+                ["Email", facStatus.email, facStatus.email_verified],
+                ["Mobile", facStatus.mobile_number || "Not set", facStatus.mobile_verified],
+              ].map(([label,val,verified]) => (
+                <div key={label}>
+                  <div style={{ fontSize:10, color:"#888" }}>{label}</div>
+                  <div style={{ fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
+                    {val}
+                    {verified
+                      ? <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background:"#EAF3DE", color:"#27500A" }}>✅ Verified</span>
+                      : <span style={{ fontSize:9, padding:"1px 6px", borderRadius:6, background:"#FDF3D7", color:"#8a6d1a" }}>Unverified</span>}
+                  </div>
+                </div>
+              ))}
+              <div>
+                <div style={{ fontSize:10, color:"#888" }}>Account State</div>
+                <div style={{ fontSize:12, fontWeight:600, color: facStatus.locked ? "#A32D2D" : "#1B7A45" }}>
+                  {facStatus.locked ? `🔒 Locked` : "🟢 Active"}
+                  {facStatus.force_password_reset && " · ⚠ Force Reset"}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#888" }}>Failed Attempts</div>
+                <div style={{ fontSize:12, fontWeight:600 }}>{facStatus.failed_attempts}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#888" }}>Last Password Change</div>
+                <div style={{ fontSize:12, fontWeight:600 }}>{facStatus.last_password_changed ? new Date(facStatus.last_password_changed).toLocaleString() : "Never"}</div>
+              </div>
+            </div>
+
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button disabled={busy || facStatus.email_verified} onClick={() => act(() => apiPost(`/admin/security/faculty/${facStatus.faculty_id}/verify-contact`, { field:"email" }), "Email verified")}
+                style={{ padding:"7px 14px", background: facStatus.email_verified ? "#eee" : P, color: facStatus.email_verified ? "#999" : "#fff", borderRadius:7, fontSize:11, fontWeight:500, border:"none", cursor: facStatus.email_verified ? "default" : "pointer" }}>
+                ✓ Verify Email
+              </button>
+              <button disabled={busy || !facStatus.mobile_number || facStatus.mobile_verified} onClick={() => act(() => apiPost(`/admin/security/faculty/${facStatus.faculty_id}/verify-contact`, { field:"mobile" }), "Mobile verified")}
+                style={{ padding:"7px 14px", background: (facStatus.mobile_verified || !facStatus.mobile_number) ? "#eee" : P, color: (facStatus.mobile_verified || !facStatus.mobile_number) ? "#999" : "#fff", borderRadius:7, fontSize:11, fontWeight:500, border:"none", cursor: (facStatus.mobile_verified || !facStatus.mobile_number) ? "default" : "pointer" }}>
+                ✓ Verify Mobile
+              </button>
+              <button disabled={busy} onClick={() => act(() => apiPost(`/admin/security/faculty/${facStatus.faculty_id}/force-reset`), "Force password reset requested")}
+                style={{ padding:"7px 14px", background:"#fff", color:"#E6A23C", borderRadius:7, fontSize:11, fontWeight:500, border:"1px solid #E6A23C", cursor:"pointer" }}>
+                ⚠ Force Password Reset
+              </button>
+              <button disabled={busy || !facStatus.locked} onClick={() => act(() => apiPost(`/admin/security/faculty/${facStatus.faculty_id}/unlock`), "Account unlocked")}
+                style={{ padding:"7px 14px", background:"#fff", color:"#1B7A45", borderRadius:7, fontSize:11, fontWeight:500, border:"1px solid #1B7A45", cursor: facStatus.locked ? "pointer" : "default", opacity: facStatus.locked ? 1 : 0.5 }}>
+                🔓 Unlock Account
+              </button>
+              <button onClick={() => setResetModal({ faculty_id: facStatus.faculty_id, name: facStatus.name, email: facStatus.email })} disabled={busy}
+                style={{ padding:"7px 14px", background:P, color:"#fff", borderRadius:7, fontSize:11, fontWeight:500, border:"none", cursor:"pointer" }}>
+                🔑 Reset Password
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Audit logs */}
+      <div style={cardStyle}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
+          <span style={{ fontSize:13, fontWeight:600 }}>Security Audit Log</span>
+          <div style={{ display:"flex", gap:6 }}>
+            {[["all","All"],["login","Logins"],["otp","OTP"],["password","Passwords"]].map(([key,label]) => (
+              <button key={key} onClick={() => setLogScope(key)} style={{
+                padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:500, cursor:"pointer",
+                background: logScope===key ? P : "#fff", color: logScope===key ? "#fff" : "#666",
+                border: logScope===key ? `1px solid ${P}` : "1px solid #ddd",
+              }}>{label}</button>
+            ))}
+          </div>
+        </div>
+        {logs.length === 0 ? (
+          <div style={{ fontSize:12, color:"#999", padding:"20px", textAlign:"center" }}>No security events recorded yet.</div>
+        ) : (
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead>
+              <tr style={{ background:"#f8f8fb" }}>
+                {["Time","Faculty","Action","Status","Method","Detail","Browser","IP"].map(h => (
+                  <th key={h} style={{ padding:"8px 10px", fontSize:10, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map(r => (
+                <tr key={r.log_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
+                  <td style={{ padding:"8px 10px", color:"#888", fontSize:11, whiteSpace:"nowrap" }}>{new Date(r.created_at).toLocaleString()}</td>
+                  <td style={{ padding:"8px 10px", fontWeight:500 }}>{r.faculty_name}</td>
+                  <td style={{ padding:"8px 10px", fontWeight:500 }}>{r.action}</td>
+                  <td style={{ padding:"8px 10px" }}>
+                    <span style={{ fontSize:10, padding:"2px 8px", borderRadius:6, background: r.status==="success" ? "#EAF3DE" : "#FCEBEB", color: r.status==="success" ? "#27500A" : "#791F1F", fontWeight:500 }}>{r.status}</span>
+                  </td>
+                  <td style={{ padding:"8px 10px", color:"#555" }}>{r.method || "—"}</td>
+                  <td style={{ padding:"8px 10px", color:"#555" }}>{r.detail || "—"}</td>
+                  <td style={{ padding:"8px 10px", color:"#888", fontSize:11 }}>{r.device} · {r.browser}</td>
+                  <td style={{ padding:"8px 10px", color:"#888", fontSize:11 }}>{r.ip_address || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Reset password modal */}
+      {resetModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
+          <div style={{ background:"#fff", borderRadius:14, padding:"24px 28px", width:420 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontSize:15, fontWeight:600 }}>Reset Password — {resetModal.name}</span>
+              <span style={{ cursor:"pointer", color:"#888", fontSize:20 }} onClick={() => setResetModal(null)}>×</span>
+            </div>
+            <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
+              Set a new password for <b>{resetModal.email}</b>. The user will be logged out of all sessions.
+            </div>
+            <label style={{ fontSize:11, color:"#555", display:"block", marginBottom:4 }}>New password</label>
+            <input type="text" value={resetPass} onChange={e => setResetPass(e.target.value)} style={{ ...inp, marginBottom:12 }} placeholder="At least 8 chars, upper, lower, number, special" />
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setResetModal(null)} style={{ flex:1, padding:10, border:"1px solid #ddd", borderRadius:8, fontSize:13, background:"#fff", cursor:"pointer" }}>Cancel</button>
+              <button disabled={busy || !resetPass} onClick={async () => {
+                setBusy(true);
+                try {
+                  await apiPost(`/admin/security/faculty/${resetModal.faculty_id}/reset-password`, { new_password: resetPass });
+                  showMsg("success", `Password reset for ${resetModal.name}`);
+                  setResetModal(null); setResetPass(""); fetchAll(); loadFacultyStatus(facultyId);
+                } catch (e) { showMsg("error", e.response?.data?.detail || "Reset failed"); }
+                finally { setBusy(false); }
+              }} style={{ flex:2, padding:10, background:P, color:"#fff", borderRadius:8, fontSize:13, fontWeight:500, border:"none", cursor:"pointer" }}>
+                {busy ? "Resetting..." : "Reset Password"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
