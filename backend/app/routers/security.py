@@ -83,15 +83,7 @@ class ContactVerify(BaseModel):
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-def _resolve_faculty(db: Session, identifier: str):
-    """Resolve identifier (email or mobile) to a Faculty row or None."""
-    identifier = (identifier or "").strip()
-    if not identifier:
-        return None
-    fac = db.query(Faculty).filter(Faculty.email == identifier).first()
-    if fac:
-        return fac
-    return db.query(Faculty).filter(Faculty.mobile_number == identifier).first()
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _audit(db: Session, faculty_id, action, status="success",
@@ -181,64 +173,97 @@ def _send_changed_notification(fac: Faculty, request=None) -> None:
 # ══ FORGOT PASSWORD (public) ═════════════════════════════════════════════════
 @router.post("/forgot-password/request")
 def forgot_request(payload: ForgotRequest, request: Request, db: Session = Depends(get_db)):
-    fac = _resolve_faculty(db, payload.identifier)
+    identifier = (payload.identifier or "").strip().lower()
+    if not identifier or not _EMAIL_RE.match(identifier):
+        raise HTTPException(status_code=400, detail="Please enter a valid registered email address.")
+    fac = db.query(Faculty).filter(Faculty.email == identifier).first()
     if not fac or not fac.is_active:
         # Do not reveal whether the account exists.
         raise HTTPException(status_code=404, detail="Account not found.")
 
-    if not fac.mobile_number:
-        raise HTTPException(status_code=400, detail="No registered mobile number on this account.")
-    if "mobile" not in (set(available_channels()) or set()):
-        raise HTTPException(status_code=503,
-                            detail="SMS delivery is not configured. Please contact the administrator.")
-    try:
-        otp = issue_otp(fac, "mobile")
-    except ValueError as e:
-        raise HTTPException(status_code=429, detail=str(e))
+    flow = otp_integration.begin_forgot_password_flow(fac.faculty_id, identifier)
+    if not flow["ok"]:
+        _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
+               request=request, detail=f"Forgot-password OTP blocked: {flow['message']}")
+        db.commit()
+        raise HTTPException(status_code=429, detail=flow["message"])
 
-    db.commit()
-    purpose = "resetting your password"
-    delivered, masked = _deliver(db, fac, purpose, otp, request)
-    db.commit()
-    if not delivered:
-        raise HTTPException(status_code=503, detail="SMS delivery failed. Please try again later.")
+    result = otp_integration.send_otp(identifier)
+    if not result["ok"]:
+        _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
+               request=request, detail=result["message"])
+        db.commit()
+        raise HTTPException(status_code=503 if result["retryable"] else 400,
+                            detail=result["message"])
 
+    _audit(db, fac.faculty_id, "otp_requested", status="success", method="email",
+           request=request,
+           detail=f"Forgot-password OTP sent to {flow['masked_email']}")
+    db.commit()
     return {
-        "message": "OTP Sent Successfully",
-        "method": "mobile",
-        "masked_contact": masked,
-        "expires_in_seconds": 5 * 60,
+        "message": "OTP has been sent to your registered email.",
+        "method": "email",
+        "masked_contact": flow["masked_email"],
+        "expires_in_seconds": otp_integration.FLOW_EXPIRY_MINUTES * 60,
+        "retry_after_seconds": otp_integration.RESEND_COOLDOWN_SECONDS,
     }
 
 
 @router.post("/forgot-password/verify")
 def forgot_verify(payload: OtpVerify, request: Request, db: Session = Depends(get_db)):
-    fac = _resolve_faculty(db, payload.identifier)
+    identifier = (payload.identifier or "").strip().lower()
+    fac = db.query(Faculty).filter(Faculty.email == identifier).first()
     if not fac or not fac.is_active:
         raise HTTPException(status_code=404, detail="Account not found.")
-    ok, msg = validate_otp(fac, payload.otp.strip(), consume=False)
+
+    flow = otp_integration.get_forgot_password_flow(fac.faculty_id)
+    if not flow or not flow.get("email"):
+        raise HTTPException(status_code=400,
+                            detail="No OTP was requested. Please request a new OTP first.")
+    if flow.get("attempts", 0) >= otp_integration.MAX_ATTEMPTS:
+        otp_integration.end_forgot_password_flow(fac.faculty_id)
+        raise HTTPException(status_code=429,
+                            detail="Too many incorrect attempts. Please request a new OTP.")
+
+    result = otp_integration.verify_otp(flow["email"], payload.otp.strip())
     db.commit()
-    _audit(db, fac.faculty_id, "otp_verified" if ok else "otp_failed",
-           status="success" if ok else "failed",
-           method=fac.otp_method, request=request,
-           detail=("OTP verified for password reset" if ok else f"OTP verification failed: {msg}"))
+    if not result["ok"]:
+        if not result["retryable"]:
+            flow["attempts"] = flow.get("attempts", 0) + 1
+            otp_integration.set_forgot_password_flow(fac.faculty_id, flow)
+        msg = result["message"]
+        if "expired" in msg.lower():
+            msg = "OTP expired. Please request a new OTP."
+        _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
+               request=request, detail=f"Forgot-password OTP verification failed: {msg}")
+        db.commit()
+        raise HTTPException(status_code=503 if result["retryable"] else 400,
+                            detail=msg)
+
+    flow["verified"] = True
+    flow["verified_at"] = datetime.now()
+    otp_integration.set_forgot_password_flow(fac.faculty_id, flow)
+    _audit(db, fac.faculty_id, "otp_verified", status="success", method="email",
+           request=request, detail="Forgot-password OTP verified")
     db.commit()
-    if not ok:
-        raise HTTPException(status_code=400, detail=msg)
     return {"message": "OTP verified successfully"}
 
 
 @router.post("/forgot-password/reset")
 def forgot_reset(payload: ResetPassword, request: Request, db: Session = Depends(get_db)):
-    fac = _resolve_faculty(db, payload.identifier)
+    identifier = (payload.identifier or "").strip().lower()
+    fac = db.query(Faculty).filter(Faculty.email == identifier).first()
     if not fac or not fac.is_active:
         raise HTTPException(status_code=404, detail="Account not found.")
-    ok, msg = validate_otp(fac, payload.otp.strip())
-    db.commit()
-    if not ok:
-        raise HTTPException(status_code=400, detail=msg)
+
+    flow = otp_integration.get_forgot_password_flow(fac.faculty_id)
+    if not flow or not flow.get("email") or not flow.get("verified"):
+        raise HTTPException(status_code=400,
+                            detail="OTP not verified. Please verify the OTP before resetting your password.")
+
     _apply_new_password(db, fac, payload.new_password, request=request,
                         action="password_reset")
+    otp_integration.end_forgot_password_flow(fac.faculty_id)
     _audit(db, fac.faculty_id, "password_reset", request=request,
            detail="Password reset via forgot-password flow")
     db.commit()
@@ -376,9 +401,6 @@ MAX_ATTEMPTS = otp_integration.MAX_ATTEMPTS
 
 def _registered_email(fac: Faculty) -> str:
     return (fac.email or "").strip().lower()
-
-
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @router.post("/change-password/email/request")

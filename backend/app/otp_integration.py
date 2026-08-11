@@ -117,8 +117,8 @@ _flows = {}
 _flows_lock = threading.Lock()
 
 
-def _flow_key(faculty_id) -> str:
-    return f"change_password:{faculty_id}"
+def _flow_key(namespace: str, faculty_id) -> str:
+    return f"{namespace}:{faculty_id}"
 
 
 def _prune_flows(now: datetime) -> None:
@@ -138,9 +138,11 @@ def _mask_email(email: str) -> str:
     return f"{masked}@{domain}"
 
 
-def begin_change_password_flow(faculty_id: int, email: str) -> dict:
-    """Start (or restart) a change-password OTP flow for a faculty member.
+def begin_flow(namespace: str, faculty_id, email: str) -> dict:
+    """Start (or restart) an OTP flow for a faculty member.
 
+    ``namespace`` separates independent flows (e.g. change-password vs
+    forgot-password) so they do not share rate-limit or attempt state.
     Enforces the per-window send limit and the resend cooldown. Returns
     ``{"ok": bool, "message": str, "retry_after": int, "masked_email": str}``.
     """
@@ -148,7 +150,7 @@ def begin_change_password_flow(faculty_id: int, email: str) -> dict:
     email = (email or "").strip().lower()
     with _flows_lock:
         _prune_flows(now)
-        key = _flow_key(faculty_id)
+        key = _flow_key(namespace, faculty_id)
         flow = _flows.get(key)
         last = flow["last_sent"] if flow else None
         sends = flow["sends"] if flow else deque()
@@ -186,18 +188,50 @@ def begin_change_password_flow(faculty_id: int, email: str) -> dict:
                 "masked_email": _mask_email(email)}
 
 
-def get_flow(faculty_id: int):
+def get_flow(namespace: str, faculty_id):
     """Return the current flow dict (or None). Safe to mutate via callers."""
     with _flows_lock:
         _prune_flows(datetime.now())
-        return _flows.get(_flow_key(faculty_id))
+        return _flows.get(_flow_key(namespace, faculty_id))
 
 
-def set_flow(faculty_id: int, flow: dict) -> None:
+def set_flow(namespace: str, faculty_id, flow: dict) -> None:
     with _flows_lock:
-        _flows[_flow_key(faculty_id)] = flow
+        _flows[_flow_key(namespace, faculty_id)] = flow
+
+
+def end_flow(namespace: str, faculty_id) -> None:
+    with _flows_lock:
+        _flows.pop(_flow_key(namespace, faculty_id), None)
+
+
+def begin_change_password_flow(faculty_id: int, email: str) -> dict:
+    return begin_flow("change_password", faculty_id, email)
+
+
+def get_change_password_flow(faculty_id: int):
+    return get_flow("change_password", faculty_id)
+
+
+def set_change_password_flow(faculty_id: int, flow: dict) -> None:
+    set_flow("change_password", faculty_id, flow)
 
 
 def end_change_password_flow(faculty_id: int) -> None:
-    with _flows_lock:
-        _flows.pop(_flow_key(faculty_id), None)
+    end_flow("change_password", faculty_id)
+
+
+def begin_forgot_password_flow(faculty_id, email: str) -> dict:
+    return begin_flow("forgot_password", faculty_id, email)
+
+
+def get_forgot_password_flow(faculty_id):
+    return get_flow("forgot_password", faculty_id)
+
+
+def set_forgot_password_flow(faculty_id, flow: dict) -> None:
+    set_flow("forgot_password", faculty_id, flow)
+
+
+def end_forgot_password_flow(faculty_id) -> None:
+    end_flow("forgot_password", faculty_id)

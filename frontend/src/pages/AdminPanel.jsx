@@ -34,6 +34,7 @@ const EMPTY_FORM = { name:"", email:"", password:"", role:"faculty", designation
 export default function AdminPanel() {
   const [adminToken, setAdminToken] = useState(localStorage.getItem("admin_token")||"");
   const [loginForm, setLoginForm] = useState({ email:"", password:"" });
+  const [loginShowPw, setLoginShowPw] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeView, setActiveView] = useState("overview");
@@ -153,22 +154,34 @@ export default function AdminPanel() {
 
   // ── Login Screen ──
   if (!adminToken) return (
-    <div style={{ minHeight:"100vh", background:`url('/admin-bg.jpg') center/cover no-repeat`, display:"flex", alignItems:"center", justifyContent:"center", position:"relative" }}>
-      <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.5)" }} />
-      <div style={{ position:"relative", background:"#fff", borderRadius:16, padding:"40px 36px", width:380, boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{ display:"inline-flex", width:70, height:70, background:"rgba(91,61,245,0.08)", borderRadius:18, alignItems:"center", justifyContent:"center", padding:10, marginBottom:10, boxShadow:"0 0 20px rgba(91,61,245,0.12)" }}>
+    <div style={{ minHeight:"100vh", background:`url('/admin-bg.jpg') center/cover no-repeat fixed`, display:"flex", alignItems:"center", justifyContent:"center", position:"relative", padding:24 }}>
+      <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.28)", backdropFilter:"blur(5px)", WebkitBackdropFilter:"blur(5px)" }} />
+      <div style={{ position:"relative", width:"100%", maxWidth:420, background:"rgba(0,0,0,0.42)", backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)", borderRadius:22, padding:"40px 38px", border:"1px solid rgba(255,255,255,0.16)", boxShadow:"0 24px 60px rgba(0,0,0,0.45)", boxSizing:"border-box" }}>
+        <div style={{ display:"flex", justifyContent:"center", marginBottom:24 }}>
+          <div style={{ width:200, height:86, background:"#fff", borderRadius:12, padding:"10px 18px", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 10px 30px rgba(0,0,0,0.35)" }}>
             <img src="/niet-logo.svg" alt="NIET" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
           </div>
-          <div style={{ fontSize:13, color:"#888" }}>Admin Panel · Full System Management</div>
         </div>
-        {loginError&&<div style={{ background:"#FCEBEB",color:"#791F1F",padding:"10px 14px",borderRadius:8,fontSize:13,marginBottom:16 }}>{loginError}</div>}
+        <div style={{ textAlign:"center", marginBottom:22 }}>
+          <div style={{ fontSize:24, fontWeight:700, color:"#fff" }}>Welcome back</div>
+          <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)", marginTop:4 }}>Sign in to the Admin Panel</div>
+        </div>
+        {loginError&&<div style={{ background:"rgba(249,80,80,0.16)",color:"#ffd6d6",border:"1px solid rgba(255,150,150,0.3)",padding:"10px 14px",borderRadius:10,fontSize:13,marginBottom:18 }}>{loginError}</div>}
         <form onSubmit={handleAdminLogin}>
-          <div style={{ marginBottom:14 }}><label style={lbl}>Admin Email</label><input type="email" required value={loginForm.email} onChange={e=>setLoginForm({...loginForm,email:e.target.value})} style={inp} placeholder="admin@niet.co.in" /></div>
-          <div style={{ marginBottom:20 }}><label style={lbl}>Password</label><input type="password" required value={loginForm.password} onChange={e=>setLoginForm({...loginForm,password:e.target.value})} style={inp} placeholder="••••••••" /></div>
-          <button type="submit" style={{ width:"100%",padding:12,background:P,color:"#fff",borderRadius:8,fontSize:15,fontWeight:600,border:"none",cursor:"pointer" }}>Login as Admin</button>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ fontSize:13, fontWeight:500, color:"rgba(255,255,255,0.85)", display:"block", marginBottom:7 }}>Admin Email</label>
+            <input type="email" required value={loginForm.email} onChange={e=>setLoginForm({...loginForm,email:e.target.value})} placeholder="admin@niet.co.in" style={{ width:"100%", boxSizing:"border-box", padding:"12px 14px", background:"rgba(255,255,255,0.08)", border:"1.5px solid rgba(255,255,255,0.2)", borderRadius:10, fontSize:14, color:"#fff", outline:"none" }} />
+          </div>
+          <div style={{ marginBottom:24 }}>
+            <label style={{ fontSize:13, fontWeight:500, color:"rgba(255,255,255,0.85)", display:"block", marginBottom:7 }}>Password</label>
+            <div style={{ position:"relative" }}>
+              <input type={loginShowPw ? "text" : "password"} required value={loginForm.password} onChange={e=>setLoginForm({...loginForm,password:e.target.value})} placeholder="Enter your password" style={{ width:"100%", boxSizing:"border-box", padding:"12px 14px", background:"rgba(255,255,255,0.08)", border:"1.5px solid rgba(255,255,255,0.2)", borderRadius:10, fontSize:14, color:"#fff", outline:"none" }} />
+              <button type="button" onClick={()=>setLoginShowPw(s=>!s)} tabIndex={-1} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", fontSize:16, cursor:"pointer", padding:0 }}>{loginShowPw ? "🙈" : "👁"}</button>
+            </div>
+          </div>
+          <button type="submit" style={{ width:"100%", padding:13, border:"none", borderRadius:10, fontSize:15, fontWeight:600, color:"#fff", cursor:"pointer", background:"linear-gradient(135deg, #6a4cf5 0%, #8b5cf6 45%, #3b82f6 100%)", boxShadow:"0 10px 26px rgba(107,78,245,0.4)" }}>Login as Admin</button>
         </form>
-        <div style={{ marginTop:16,textAlign:"center" }}><a href="/" style={{ fontSize:12,color:"#888" }}>← Back to Portal Login</a></div>
+        <div style={{ marginTop:18, textAlign:"center" }}><a href="/" style={{ fontSize:12.5, color:"#b9aaff", textDecoration:"none", fontWeight:500 }}>← Back to Portal Login</a></div>
       </div>
     </div>
   );

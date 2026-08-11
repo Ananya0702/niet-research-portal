@@ -98,183 +98,241 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", background: "#f7f7f8" }}>
-      {/* LEFT */}
-      <div style={{
-        flex: 1, background: "linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/admin-bg.jpg') center/cover no-repeat",
-        display: "flex", flexDirection: "column", alignItems: "center",
-        justifyContent: "center", padding: 48, color: "#fff",
-      }}>
-        <div style={{ width: 100, height: 100, background: "rgba(255,255,255,0.12)",
-          borderRadius: 24, display: "flex", alignItems: "center", justifyContent: "center",
-          marginBottom: 24, padding: 14 }}>
-          <img src="/niet-logo.svg" alt="NIET" style={{ width: "100%", height: "100%",
-            objectFit: "contain", filter: "brightness(0) invert(1)" }} />
-        </div>
-        <div style={{ fontSize: 32, fontWeight: 700 }}>Reset Password</div>
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginTop: 12,
-          textAlign: "center", maxWidth: 360 }}>
-          Securely recover access to your Research Portal account using a
-          one-time password (OTP) sent to your registered contact.
-        </div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 40 }}>
-          Excellence in Research · Impacting the Future
-        </div>
-      </div>
+    <div className="fp-page">
+      <div className="fp-frame">
 
-      {/* RIGHT */}
-      <div style={{
-        width: 520, background: "#fff", display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", padding: "48px 44px",
-      }}>
-        <div style={{ width: "100%", maxWidth: 400 }}>
-
-          {/* Progress */}
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-            <Link to="/" style={{ fontSize: 13, color: "#888", textDecoration: "none",
-              marginRight: 12 }}>← Back to login</Link>
+        {/* LEFT */}
+        <div className="fp-info-box">
+          <div className="fp-brand">
+            <div className="fp-logo">
+              <img src="/niet-logo.svg" alt="NIET" />
+            </div>
           </div>
-          <div style={{ display: "flex", marginBottom: 28 }}>
-            {STEPS.map((label, i) => (
-              <div key={label} style={{ flex: 1, textAlign: "center" }}>
-                <div style={{
-                  width: 28, height: 28, borderRadius: "50%", margin: "0 auto",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, fontWeight: 700,
-                  background: i < step ? P : i === step ? P : "#eee",
-                  color: i <= step ? "#fff" : "#999",
-                }}>{i < step ? "✓" : i + 1}</div>
-                <div style={{ fontSize: 10, marginTop: 6, color: i === step ? P : "#999",
-                  fontWeight: i === step ? 600 : 400 }}>
-                  {label}
+          <h1 className="fp-title">Reset Password</h1>
+          <p className="fp-subtitle">Securely recover access to your Research Portal account</p>
+          <p className="fp-desc">
+            A one-time password (OTP) is sent to your registered contact to verify your identity
+            before setting a new password.
+          </p>
+          <div className="fp-foot">Excellence in Research · Impacting the Future</div>
+        </div>
+
+        {/* RIGHT */}
+        <div className="fp-form-box">
+          <div className="fp-inner">
+
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+              <Link to="/" style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", textDecoration: "none" }}>
+                ← Back to login
+              </Link>
+            </div>
+
+            {/* Progress */}
+            <div style={{ display: "flex", marginBottom: 28 }}>
+              {STEPS.map((label, i) => (
+                <div key={label} style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: "50%", margin: "0 auto",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 13, fontWeight: 700,
+                    background: i <= step ? P : "rgba(255,255,255,0.15)",
+                    color: i <= step ? "#fff" : "rgba(255,255,255,0.5)",
+                  }}>{i < step ? "✓" : i + 1}</div>
+                  <div style={{ fontSize: 10, marginTop: 6, color: i === step ? "#b9aaff" : "rgba(255,255,255,0.55)",
+                    fontWeight: i === step ? 600 : 400 }}>
+                    {label}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          {error && (
-            <div style={{ background: "#FCEBEB", color: "#791F1F", padding: "10px 14px",
-              borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>
-          )}
-          {success && (
-            <div style={{ background: "#E9F7EF", color: "#1B7A45", padding: "10px 14px",
-              borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{success}</div>
-          )}
+            {error && (
+              <div style={{ background: "rgba(249,80,80,0.16)", color: "#ffd6d6",
+                border: "1px solid rgba(255,150,150,0.3)", padding: "10px 14px",
+                borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{error}</div>
+            )}
+            {success && (
+              <div style={{ background: "rgba(46,180,110,0.16)", color: "#c9f0dc",
+                border: "1px solid rgba(120,220,160,0.35)", padding: "10px 14px",
+                borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{success}</div>
+            )}
 
-          {/* STEP 0 — mobile number */}
-          {step === 0 && (
-            <form onSubmit={handleRequest}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a1a", marginBottom: 6 }}>
-                Find your account
-              </div>
-              <div style={{ fontSize: 14, color: "#888", marginBottom: 28 }}>
-                Enter your registered mobile number. We'll send a one-time
-                password (OTP) to your phone to reset your password.
-              </div>
-              <label style={lbl}>Registered mobile number</label>
-              <input
-                type="tel" required value={identifier}
-                onChange={e => setIdentifier(e.target.value.replace(/[^\d]/g, ""))}
-                placeholder="Enter your 10-digit mobile number"
-                style={inp}
-              />
-              <div style={{ fontSize: 10, color: "#aaa", marginTop: 8 }}>
-                The OTP is sent as an SMS to your registered mobile number only.
-              </div>
-              <button type="submit" disabled={loading || identifier.trim().length < 7} style={btn}>
-                {loading ? "Sending OTP..." : "Send OTP →"}
-              </button>
-            </form>
-          )}
+            {/* STEP 0 — email */}
+            {step === 0 && (
+              <form onSubmit={handleRequest}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                  Find your account
+                </div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 26 }}>
+                  Enter your registered email address. We'll send a one-time
+                  password (OTP) to your inbox to reset your password.
+                </div>
+                <label style={lbl}>Registered email</label>
+                <input
+                  type="email" required value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  placeholder="yourname@niet.co.in"
+                  style={inp}
+                />
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", marginTop: 8 }}>
+                  The OTP is sent to your registered email address only.
+                </div>
+                <button type="submit" disabled={loading || identifier.trim().length < 7} style={btn}>
+                  {loading ? "Sending OTP..." : "Send OTP →"}
+                </button>
+              </form>
+            )}
 
-          {/* STEP 1 — OTP */}
-          {step === 1 && (
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a1a", marginBottom: 6 }}>
-                Enter verification code
+            {/* STEP 1 — OTP */}
+            {step === 1 && (
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                  Enter verification code
+                </div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+                  We sent a 6-digit code by email to <b style={{ color: "#b9aaff" }}>{masked}</b>.
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#b9aaff", textAlign: "center", marginBottom: 18 }}>
+                  {fmtTimer(resendIn)}
+                </div>
+                <OtpInput length={6} onChange={handleOtpComplete} />
+                <div style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+                  {resendIn > 0 ? (
+                    <>Resend available after the countdown</>
+                  ) : (
+                    <span onClick={handleResend} style={{ color: "#b9aaff", cursor: "pointer",
+                      fontWeight: 600 }}>Resend code</span>
+                  )}
+                </div>
+                <button disabled={otp.length !== 6 || loading} onClick={handleVerify} style={{
+                  ...btn, marginTop: 26, opacity: otp.length === 6 ? 1 : 0.5 }}>
+                  {loading ? "Verifying..." : "Verify →"}
+                </button>
               </div>
-              <div style={{ fontSize: 14, color: "#888", marginBottom: 8 }}>
-                We sent a 6-digit code by SMS to <b style={{ color: P }}>{masked}</b>.
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: P, textAlign: "center", marginBottom: 18 }}>
-                {fmtTimer(resendIn)}
-              </div>
-              <OtpInput length={6} onChange={handleOtpComplete} />
-              <div style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "#888" }}>
-                {resendIn > 0 ? (
-                  <>Resend available after the countdown</>
-                ) : (
-                  <span onClick={handleResend} style={{ color: P, cursor: "pointer",
-                    fontWeight: 600 }}>Resend code</span>
+            )}
+
+            {/* STEP 2 — new password */}
+            {step === 2 && (
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                  Set a new password
+                </div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 24 }}>
+                  Choose a strong password you haven't used before.
+                </div>
+                <label style={lbl}>New password</label>
+                <input type="password" value={newPass} onChange={e => handleStrength(e.target.value)}
+                  style={inp} placeholder="Enter new password" />
+                <label style={{ ...lbl, marginTop: 16 }}>Confirm new password</label>
+                <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+                  style={inp} placeholder="Re-enter new password" />
+
+                {newPass && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <div style={{ fontSize: 20 }}>{strength === "strong" ? "🟢" : strength === "medium" ? "🟡" : "🔴"}</div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                        {strength === "strong" ? "Strong" : strength === "medium" ? "Medium" : "Weak"}
+                      </span>
+                    </div>
+                    <StrengthenBar strength={strength} />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10 }}>
+                      {rules.map(r => (
+                        <div key={r.label} style={{ fontSize: 12, color: r.passed ? "#7fe0aa" : "rgba(255,255,255,0.55)" }}>
+                          {r.passed ? "✓" : "•"} {r.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
-              </div>
-              <button disabled={otp.length !== 6 || loading} onClick={handleVerify} style={{
-                ...btn, marginTop: 26, opacity: otp.length === 6 ? 1 : 0.5 }}>
-                {loading ? "Verifying..." : "Verify →"}
-              </button>
-            </div>
-          )}
 
-          {/* STEP 2 — new password */}
-          {step === 2 && (
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a1a", marginBottom: 6 }}>
-                Set a new password
+                <button disabled={loading} onClick={handleReset} style={{ ...btn, marginTop: 26 }}>
+                  {loading ? "Resetting..." : "Reset password"}
+                </button>
               </div>
-              <div style={{ fontSize: 14, color: "#888", marginBottom: 24 }}>
-                Choose a strong password you haven't used before.
-              </div>
-              <label style={lbl}>New password</label>
-              <input type="password" value={newPass} onChange={e => handleStrength(e.target.value)}
-                style={inp} placeholder="Enter new password" />
-              <label style={{ ...lbl, marginTop: 16 }}>Confirm new password</label>
-              <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
-                style={inp} placeholder="Re-enter new password" />
+            )}
 
-              {newPass && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <div style={{ fontSize: 20 }}>{strength === "strong" ? "🟢" : strength === "medium" ? "🟡" : "🔴"}</div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#444" }}>
-                      {strength === "strong" ? "Strong" : strength === "medium" ? "Medium" : "Weak"}
-                    </span>
-                  </div>
-                  <StrengthenBar strength={strength} />
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10 }}>
-                    {rules.map(r => (
-                      <div key={r.label} style={{ fontSize: 12, color: r.passed ? "#1B7A45" : "#999" }}>
-                        {r.passed ? "✓" : "•"} {r.label}
-                      </div>
-                    ))}
-                  </div>
+            {/* STEP 3 — success */}
+            {step === 3 && (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <div style={{ width: 72, height: 72, borderRadius: "50%", margin: "0 auto 20px",
+                  background: "rgba(46,180,110,0.2)", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: 34 }}>🎉</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 10 }}>
+                  Password reset complete
                 </div>
-              )}
-
-              <button disabled={loading} onClick={handleReset} style={{ ...btn, marginTop: 26 }}>
-                {loading ? "Resetting..." : "Reset password"}
-              </button>
-            </div>
-          )}
-
-          {/* STEP 3 — success */}
-          {step === 3 && (
-            <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ width: 72, height: 72, borderRadius: "50%", margin: "0 auto 20px",
-                background: "#E9F7EF", display: "flex", alignItems: "center",
-                justifyContent: "center", fontSize: 34 }}>🎉</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a1a", marginBottom: 10 }}>
-                Password reset complete
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 28 }}>
+                  Your password has been updated. Login with your new credentials.
+                </div>
+                <Link to="/" style={{ ...btn, display: "block", textAlign: "center",
+                  textDecoration: "none", background: "linear-gradient(135deg, #6a4cf5 0%, #8b5cf6 45%, #3b82f6 100%)" }}>
+                  Go to login →
+                </Link>
               </div>
-              <div style={{ fontSize: 14, color: "#888", marginBottom: 28 }}>
-                Your password has been updated. Login with your new credentials.
-              </div>
-              <Link to="/" style={{ ...btn, display: "block", textAlign: "center",
-                textDecoration: "none" }}>Go to login →</Link>
-            </div>
-          )}
+            )}
 
+          </div>
         </div>
       </div>
+
+      <style>{`
+        .fp-page {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: url('/admin-bg.jpg') center/cover no-repeat fixed;
+          padding: 40px 24px;
+          font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        .fp-frame {
+          position: relative;
+          width: 100%;
+          max-width: 1060px;
+          display: grid;
+          grid-template-columns: 1.15fr 1fr;
+          gap: 0;
+          align-items: stretch;
+          overflow: hidden;
+          border-radius: 22px;
+          box-shadow: 0 24px 70px rgba(0,0,0,0.45);
+        }
+        .fp-info-box, .fp-form-box {
+          padding: 46px 44px;
+          background: rgba(0,0,0,0.42);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          border: 1px solid rgba(255,255,255,0.12);
+          color: #fff;
+        }
+        .fp-form-box {
+          border-left: 1px solid rgba(255,255,255,0.14);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+        }
+        .fp-brand { margin-bottom: 30px; }
+        .fp-logo {
+          width: 220px; height: 96px; border-radius: 14px;
+          background: #fff;
+          padding: 14px 22px; display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        }
+        .fp-logo img { width: 100%; height: 100%; object-fit: contain; }
+        .fp-title { font-size: 30px; font-weight: 700; margin: 0 0 10px; line-height: 1.2; }
+        .fp-subtitle { font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.9); margin: 0 0 12px; }
+        .fp-desc { font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.75); margin: 0; max-width: 460px; }
+        .fp-foot { margin-top: 36px; font-size: 12px; color: rgba(255,255,255,0.4); }
+
+        .fp-inner { width: 100%; max-width: 400px; }
+
+        @media (max-width: 900px) {
+          .fp-frame { grid-template-columns: 1fr; max-width: 540px; }
+          .fp-info-box, .fp-form-box { padding: 30px 26px; }
+          .fp-form-box { border-left: none; border-top: 1px solid rgba(255,255,255,0.14); }
+        }
+      `}</style>
     </div>
   );
 }
