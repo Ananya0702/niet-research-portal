@@ -56,13 +56,20 @@ def get_hod_dashboard(source: str = "all",
     faculty_ids = [f.faculty_id for f in all_faculty]
 
     # All publications in dept
-    pubs_q = db.query(Publication).filter(
+    base_q = db.query(Publication).filter(
         Publication.faculty_id.in_(faculty_ids)
     )
-    if source and source != "all":
+    if source == "google_scholar":
+        # Google Scholar ∪ ORCID, de-duplicated, feeds every figure so the
+        # totals, charts and lists stay consistent (and charts stay populated).
+        from app.source_filter import merge_source_publications
+        all_pubs = merge_source_publications(db, base_q)
+    elif source and source != "all":
         from app.source_filter import apply_source_filter
-        pubs_q = apply_source_filter(db, pubs_q, source)
-    all_pubs = pubs_q.all()
+        all_pubs = apply_source_filter(db, base_q, source).all()
+    else:
+        all_pubs = base_q.all()
+    total_publications = len(all_pubs)
 
     pubs_this_year = [p for p in all_pubs if p.year == datetime.now().year]
 
@@ -150,9 +157,7 @@ def get_hod_dashboard(source: str = "all",
     phd_count = len([f for f in all_faculty if f.is_phd])
 
     # Recent publications
-    recent_pubs = db.query(Publication).filter(
-        Publication.faculty_id.in_(faculty_ids)
-    ).order_by(Publication.year.desc()).limit(5).all()
+    recent_pubs = sorted(all_pubs, key=lambda p: p.year or 0, reverse=True)[:5]
 
     # Citations by year for dept — derived from publication records
     dept_citations_by_year = defaultdict(int)
@@ -178,7 +183,7 @@ def get_hod_dashboard(source: str = "all",
         },
         "dept_id":   dept_id,
         "kpis": {
-            "total_publications":     len(all_pubs),
+            "total_publications":     total_publications,
             "publications_this_year": len(pubs_this_year),
             "total_citations":        int(total_citations),
             "active_faculty":         len(all_faculty),

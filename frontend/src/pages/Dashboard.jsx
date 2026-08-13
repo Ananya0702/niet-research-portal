@@ -35,7 +35,7 @@ export default function Dashboard() {
   useEffect(() => {
     const id = localStorage.getItem("faculty_id");
     if (!id) return;
-    getDashboard(id).then(res => setData(res.data)).catch(console.error).finally(() => setLoading(false));
+    getDashboard(id, "google_scholar").then(res => setData(res.data)).catch(console.error).finally(() => setLoading(false));
   }, []);
 
   if (loading) return (

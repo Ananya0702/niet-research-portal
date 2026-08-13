@@ -32,7 +32,7 @@ API.interceptors.response.use(
 );
 
 export const loginAPI          = (email, password) => API.post("/auth/login", { email, password });
-export const getDashboard      = (id) => API.get(`/faculty/${id}/dashboard`);
+export const getDashboard      = (id, source) => API.get(`/faculty/${id}/dashboard`, { params: source && source !== "all" ? { source } : {} });
 export const getPublications   = (params) => API.get("/publications/", { params });
 export const getPublication    = (id) => API.get(`/publications/${id}`);
 export const getPubCounts      = (params) => API.get("/publications/stats/counts", { params });

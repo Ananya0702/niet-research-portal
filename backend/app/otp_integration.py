@@ -50,7 +50,8 @@ def _post(path: str, payload: dict) -> tuple:
                 parsed = {}
             return resp.status, parsed
     except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", "replace") if e.read() else ""
+        raw_bytes = e.read()
+        raw = raw_bytes.decode("utf-8", "replace") if raw_bytes else ""
         try:
             parsed = json.loads(raw) if raw else {}
         except ValueError:

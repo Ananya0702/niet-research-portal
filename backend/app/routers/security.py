@@ -1,17 +1,19 @@
 """Security module — OTP-based forgot password, change password and account
 mobile verification, with brute-force protection and audit logging.
 
-Change-password via email delegates to the EXISTING external Email OTP API
-through app.otp_integration (POST /send-otp, POST /verify-otp). The portal never
-generates, stores or logs OTP values; the external service enforces 5-minute
-expiry and single-use, while the portal enforces send rate limits, the 60s
-resend cooldown and the failed-attempt cap, and records activity logs.
-Mobile OTP (SMS via app.notifications) remains for forgot password, change
-password (mobile method) and contact verification.
+Email OTP: the portal delegates OTP generation, delivery and verification to
+the external Email OTP API (otp_integration — send_otp / verify_otp). No OTP
+is ever generated or stored by the portal, and no OTP plaintext is ever
+written to a log or console.
+
+Mobile OTP (SMS via app.notifications) remains for change password (mobile
+method) and contact verification — only used when an SMS provider is
+configured.
 
 Exposes:
   - Public (no auth):  forgot-password request / verify / reset
   - Authenticated:     change-password request / verify / confirm
+                       change-password/email request / verify / confirm
                        account info read + edit + mobile verify
 """
 
@@ -30,8 +32,18 @@ from app.security import get_password_hash, verify_password
 from app.security_otp import (
     issue_otp, validate_otp, parse_user_agent,
 )
+from app.otp_integration import (
+    begin_change_password_flow, get_change_password_flow,
+    set_change_password_flow, end_change_password_flow,
+    begin_forgot_password_flow, get_forgot_password_flow,
+    set_forgot_password_flow, end_forgot_password_flow,
+    send_otp as api_send_otp,
+    verify_otp as api_verify_otp,
+    FLOW_EXPIRY_MINUTES as OTP_FLOW_EXPIRY_MINUTES,
+    RESEND_COOLDOWN_SECONDS as OTP_RESEND_COOLDOWN_SECONDS,
+    MAX_ATTEMPTS as OTP_MAX_ATTEMPTS,
+)
 from app.password_policy import check_policy, password_strength, record_password, is_reused
-import app.otp_integration as otp_integration
 import app.notifier as notifier
 from app.notifications import available_channels
 
@@ -130,6 +142,19 @@ def _deliver(db: Session, fac: Faculty, purpose: str, otp: str,
     return ok, masked
 
 
+def _mask_email(email: str) -> str:
+    """Mask an email keeping the domain: an**na@niet.co.in."""
+    email = (email or "").strip()
+    if not email or "@" not in email:
+        return email or ""
+    local, _, domain = email.partition("@")
+    if len(local) <= 2:
+        masked = local[0] + "*" * max(1, len(local) - 1)
+    else:
+        masked = local[:2] + "*" * (len(local) - 2)
+    return f"{masked}@{domain}"
+
+
 def _apply_new_password(db: Session, fac: Faculty, new_password: str,
                         request=None, action="password_changed") -> None:
     """Validate + set a new password, enforcing history. Bumps token_version."""
@@ -181,31 +206,34 @@ def forgot_request(payload: ForgotRequest, request: Request, db: Session = Depen
         # Do not reveal whether the account exists.
         raise HTTPException(status_code=404, detail="Account not found.")
 
-    flow = otp_integration.begin_forgot_password_flow(fac.faculty_id, identifier)
-    if not flow["ok"]:
+    # Enforce portal-side policy (cooldown, window limit) before calling the
+    # external Email OTP API.
+    res = begin_forgot_password_flow(fac.faculty_id, identifier)
+    if not res["ok"]:
         _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
-               request=request, detail=f"Forgot-password OTP blocked: {flow['message']}")
+               request=request, detail=f"Forgot-password OTP blocked: {res['message']}")
         db.commit()
-        raise HTTPException(status_code=429, detail=flow["message"])
+        raise HTTPException(status_code=429, detail=res["message"])
 
-    result = otp_integration.send_otp(identifier)
-    if not result["ok"]:
+    sent = api_send_otp(identifier)
+    if not sent["ok"]:
+        # Undo the flow so a transient delivery failure does not burn a send.
+        end_forgot_password_flow(fac.faculty_id)
         _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
-               request=request, detail=result["message"])
+               request=request, detail=f"Forgot-password OTP delivery failed: {sent['message']}")
         db.commit()
-        raise HTTPException(status_code=503 if result["retryable"] else 400,
-                            detail=result["message"])
+        raise HTTPException(status_code=503 if sent["retryable"] else 400,
+                            detail=sent["message"])
 
     _audit(db, fac.faculty_id, "otp_requested", status="success", method="email",
-           request=request,
-           detail=f"Forgot-password OTP sent to {flow['masked_email']}")
+           request=request, detail=f"Forgot-password OTP sent to {res['masked_email']}")
     db.commit()
     return {
         "message": "OTP has been sent to your registered email.",
         "method": "email",
-        "masked_contact": flow["masked_email"],
-        "expires_in_seconds": otp_integration.FLOW_EXPIRY_MINUTES * 60,
-        "retry_after_seconds": otp_integration.RESEND_COOLDOWN_SECONDS,
+        "masked_contact": res["masked_email"],
+        "expires_in_seconds": OTP_FLOW_EXPIRY_MINUTES * 60,
+        "retry_after_seconds": OTP_RESEND_COOLDOWN_SECONDS,
     }
 
 
@@ -216,35 +244,31 @@ def forgot_verify(payload: OtpVerify, request: Request, db: Session = Depends(ge
     if not fac or not fac.is_active:
         raise HTTPException(status_code=404, detail="Account not found.")
 
-    flow = otp_integration.get_forgot_password_flow(fac.faculty_id)
+    flow = get_forgot_password_flow(fac.faculty_id)
     if not flow or not flow.get("email"):
-        raise HTTPException(status_code=400,
-                            detail="No OTP was requested. Please request a new OTP first.")
-    if flow.get("attempts", 0) >= otp_integration.MAX_ATTEMPTS:
-        otp_integration.end_forgot_password_flow(fac.faculty_id)
-        raise HTTPException(status_code=429,
-                            detail="Too many incorrect attempts. Please request a new OTP.")
+        raise HTTPException(status_code=400, detail="No OTP has been requested.")
+    if flow.get("verified"):
+        return {"message": "OTP verified successfully"}
 
-    result = otp_integration.verify_otp(flow["email"], payload.otp.strip())
-    db.commit()
-    if not result["ok"]:
-        if not result["retryable"]:
-            flow["attempts"] = flow.get("attempts", 0) + 1
-            otp_integration.set_forgot_password_flow(fac.faculty_id, flow)
-        msg = result["message"]
-        if "expired" in msg.lower():
-            msg = "OTP expired. Please request a new OTP."
+    if (flow.get("attempts") or 0) >= OTP_MAX_ATTEMPTS:
+        end_forgot_password_flow(fac.faculty_id)
+        raise HTTPException(status_code=400, detail="Too many invalid attempts. Please request a new OTP.")
+
+    resp = api_verify_otp(flow["email"], payload.otp.strip())
+    if not resp["ok"]:
+        if not resp["retryable"]:
+            flow["attempts"] = (flow.get("attempts") or 0) + 1
+            set_forgot_password_flow(fac.faculty_id, flow)
         _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
-               request=request, detail=f"Forgot-password OTP verification failed: {msg}")
+               request=request, detail=f"OTP verification failed: {resp['message']}")
         db.commit()
-        raise HTTPException(status_code=503 if result["retryable"] else 400,
-                            detail=msg)
+        raise HTTPException(status_code=503 if resp["retryable"] else 400, detail=resp["message"])
 
     flow["verified"] = True
     flow["verified_at"] = datetime.now()
-    otp_integration.set_forgot_password_flow(fac.faculty_id, flow)
+    set_forgot_password_flow(fac.faculty_id, flow)
     _audit(db, fac.faculty_id, "otp_verified", status="success", method="email",
-           request=request, detail="Forgot-password OTP verified")
+           request=request, detail="OTP verified for password reset")
     db.commit()
     return {"message": "OTP verified successfully"}
 
@@ -256,14 +280,22 @@ def forgot_reset(payload: ResetPassword, request: Request, db: Session = Depends
     if not fac or not fac.is_active:
         raise HTTPException(status_code=404, detail="Account not found.")
 
-    flow = otp_integration.get_forgot_password_flow(fac.faculty_id)
-    if not flow or not flow.get("email") or not flow.get("verified"):
+    flow = get_forgot_password_flow(fac.faculty_id)
+    if not flow or not flow.get("verified"):
         raise HTTPException(status_code=400,
                             detail="OTP not verified. Please verify the OTP before resetting your password.")
 
+    # Enforce the 5-minute lifetime even though the external API already
+    # consumed the OTP on verify (single-use).
+    verified_at = flow.get("verified_at")
+    if not verified_at or (datetime.now() - verified_at).total_seconds() > OTP_FLOW_EXPIRY_MINUTES * 60:
+        end_forgot_password_flow(fac.faculty_id)
+        raise HTTPException(status_code=400,
+                            detail="OTP expired. Please request a new OTP.")
+
     _apply_new_password(db, fac, payload.new_password, request=request,
                         action="password_reset")
-    otp_integration.end_forgot_password_flow(fac.faculty_id)
+    end_forgot_password_flow(fac.faculty_id)
     _audit(db, fac.faculty_id, "password_reset", request=request,
            detail="Password reset via forgot-password flow")
     db.commit()
@@ -389,15 +421,11 @@ def change_password_confirm(payload: ChangePasswordConfirm, request: Request,
 
 
 # ══ CHANGE PASSWORD via EMAIL OTP (authenticated) ════════════════════════════
-# Delegates to the EXISTING external Email OTP API (app.otp_integration ->
-# POST /send-otp, POST /verify-otp). The portal never generates, stores or logs
-# OTP values. The external service enforces 5-minute expiry and single-use; the
-# portal enforces the send rate limit, 60s resend cooldown and failed-attempt
-# cap, and writes the activity log.
-
-FLOW_EXPIRY_MINUTES = otp_integration.FLOW_EXPIRY_MINUTES
-MAX_ATTEMPTS = otp_integration.MAX_ATTEMPTS
-
+# Delegates OTP generation, delivery and verification to the external Email OTP
+# API (otp_integration — api_send_otp / api_verify_otp). No OTP is ever
+# generated or stored by the portal; the external API enforces expiry and
+# single-use and the portal enforces cooldown/window/attempt policy via the
+# in-memory flow.
 
 def _registered_email(fac: Faculty) -> str:
     return (fac.email or "").strip().lower()
@@ -417,31 +445,31 @@ def change_password_email_request(payload: EmailOtpRequest, request: Request,
     if email != _registered_email(fac):
         raise HTTPException(status_code=400, detail="Email not registered.")
 
-    flow = otp_integration.begin_change_password_flow(fac.faculty_id, email)
-    if not flow["ok"]:
+    res = begin_change_password_flow(fac.faculty_id, email)
+    if not res["ok"]:
         _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
-               request=request, detail=f"OTP request blocked: {flow['message']}")
+               request=request, detail=f"OTP request blocked: {res['message']}")
         db.commit()
-        raise HTTPException(status_code=429, detail=flow["message"])
+        raise HTTPException(status_code=429, detail=res["message"])
 
-    result = otp_integration.send_otp(email)
-    if not result["ok"]:
+    sent = api_send_otp(email)
+    if not sent["ok"]:
+        end_change_password_flow(fac.faculty_id)
         _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
-               request=request, detail=result["message"])
+               request=request, detail=f"OTP delivery failed: {sent['message']}")
         db.commit()
-        raise HTTPException(status_code=503 if result["retryable"] else 400,
-                            detail=result["message"])
+        raise HTTPException(status_code=503 if sent["retryable"] else 400,
+                            detail=sent["message"])
 
     _audit(db, fac.faculty_id, "otp_requested", status="success", method="email",
-           request=request,
-           detail=f"OTP sent to {flow['masked_email']} for password change")
+           request=request, detail=f"OTP sent to {res['masked_email']} for password change")
     db.commit()
     return {
         "message": "OTP has been sent to your registered email.",
         "method": "email",
-        "masked_contact": flow["masked_email"],
-        "expires_in_seconds": FLOW_EXPIRY_MINUTES * 60,
-        "retry_after_seconds": otp_integration.RESEND_COOLDOWN_SECONDS,
+        "masked_contact": res["masked_email"],
+        "expires_in_seconds": OTP_FLOW_EXPIRY_MINUTES * 60,
+        "retry_after_seconds": OTP_RESEND_COOLDOWN_SECONDS,
     }
 
 
@@ -453,33 +481,32 @@ def change_password_email_verify(payload: EmailOtpVerify, request: Request,
     if not fac:
         raise HTTPException(status_code=404, detail="Faculty not found")
 
-    flow = otp_integration.get_flow(fac.faculty_id)
+    flow = get_change_password_flow(fac.faculty_id)
     if not flow or not flow.get("email"):
         raise HTTPException(status_code=400,
                             detail="No OTP was requested. Please request a new OTP first.")
+    if flow.get("verified"):
+        return {"message": "OTP verified successfully"}
 
-    if flow.get("attempts", 0) >= otp_integration.MAX_ATTEMPTS:
-        otp_integration.end_change_password_flow(fac.faculty_id)
-        raise HTTPException(status_code=429,
-                            detail="Too many incorrect attempts. Please request a new OTP.")
+    if (flow.get("attempts") or 0) >= OTP_MAX_ATTEMPTS:
+        end_change_password_flow(fac.faculty_id)
+        raise HTTPException(status_code=400,
+                            detail="Too many invalid attempts. Please request a new OTP.")
 
-    result = otp_integration.verify_otp(flow["email"], payload.otp.strip())
-    if not result["ok"]:
-        if not result["retryable"]:
-            flow["attempts"] = flow.get("attempts", 0) + 1
-            otp_integration.set_flow(fac.faculty_id, flow)
-        msg = result["message"]
-        if "expired" in msg.lower():
-            msg = "OTP expired. Please request a new OTP."
+    resp = api_verify_otp(flow["email"], payload.otp.strip())
+    if not resp["ok"]:
+        if not resp["retryable"]:
+            flow["attempts"] = (flow.get("attempts") or 0) + 1
+            set_change_password_flow(fac.faculty_id, flow)
         _audit(db, fac.faculty_id, "otp_failed", status="failed", method="email",
-               request=request, detail=f"Email OTP verification failed: {msg}")
+               request=request, detail=f"Email OTP verification failed: {resp['message']}")
         db.commit()
-        raise HTTPException(status_code=503 if result["retryable"] else 400,
-                            detail=msg)
+        raise HTTPException(status_code=503 if resp["retryable"] else 400,
+                            detail=resp["message"])
 
     flow["verified"] = True
     flow["verified_at"] = datetime.now()
-    otp_integration.set_flow(fac.faculty_id, flow)
+    set_change_password_flow(fac.faculty_id, flow)
     _audit(db, fac.faculty_id, "otp_verified", status="success", method="email",
            request=request, detail="Email OTP verified for password change")
     db.commit()
@@ -494,14 +521,22 @@ def change_password_email_confirm(payload: EmailOtpConfirm, request: Request,
     if not fac:
         raise HTTPException(status_code=404, detail="Faculty not found")
 
-    flow = otp_integration.get_flow(fac.faculty_id)
-    if not flow or not flow.get("email") or not flow.get("verified"):
+    flow = get_change_password_flow(fac.faculty_id)
+    if not flow or not flow.get("verified"):
         raise HTTPException(status_code=400,
                             detail="OTP not verified. Please verify the OTP before changing your password.")
 
+    # Enforce the 5-minute lifetime even though the external API already
+    # consumed the OTP on verify (single-use).
+    verified_at = flow.get("verified_at")
+    if not verified_at or (datetime.now() - verified_at).total_seconds() > OTP_FLOW_EXPIRY_MINUTES * 60:
+        end_change_password_flow(fac.faculty_id)
+        raise HTTPException(status_code=400,
+                            detail="OTP expired. Please request a new OTP.")
+
     _apply_new_password(db, fac, payload.new_password, request=request,
                         action="password_changed")
-    otp_integration.end_change_password_flow(fac.faculty_id)
+    end_change_password_flow(fac.faculty_id)
     _audit(db, fac.faculty_id, "password_changed", request=request,
            detail="Password changed via email OTP verification")
     db.commit()

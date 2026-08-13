@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from app.database import get_db
 from app.models import Faculty, Publication, Project, Patent, Department, School
 from app.routers.auth import get_current_faculty
@@ -41,12 +41,18 @@ def _resolve_dean_scope(db, current):
     return dean, school, school_depts
 
 
-def _scoped_faculty(db, school_depts, scope_dept_id):
-    """Faculty belonging to the school (by department), optionally one dept."""
+def _scoped_faculty(db, school_depts, scope_dept_id, dean_school_id):
+    """Faculty belonging to the school (by department), optionally one dept.
+
+    The school's own dean account(s) — which hold no department — are included
+    too, so the dean's own research counts toward the school dashboard.
+    """
     dept_ids = [d.dept_id for d in school_depts]
     q = db.query(Faculty).filter(
-        Faculty.dept_id.in_(dept_ids),
-        Faculty.role != "dean_rd",
+        or_(
+            Faculty.dept_id.in_(dept_ids),
+            and_(Faculty.school_id == dean_school_id, Faculty.role == "dean_rd"),
+        )
     )
     if scope_dept_id:
         q = q.filter(Faculty.dept_id == scope_dept_id)
@@ -73,16 +79,23 @@ def get_dean_dashboard(
             raise HTTPException(status_code=403, detail="Department outside your school scope")
         scope_dept_id = dept_id
 
-    all_faculty = _scoped_faculty(db, school_depts, scope_dept_id)
+    all_faculty = _scoped_faculty(db, school_depts, scope_dept_id, school.school_id)
     faculty_ids = [f.faculty_id for f in all_faculty]
 
     pubs_q = db.query(Publication).filter(
         Publication.faculty_id.in_(faculty_ids)
     ) if faculty_ids else None
-    if pubs_q is not None and source and source != "all":
+    if pubs_q is not None and source == "google_scholar":
+        # Google Scholar ∪ ORCID, de-duplicated, feeds every figure so the
+        # totals, charts and lists stay consistent (and charts stay populated).
+        from app.source_filter import merge_source_publications
+        all_pubs = merge_source_publications(db, pubs_q)
+    elif pubs_q is not None and source and source != "all":
         from app.source_filter import apply_source_filter
-        pubs_q = apply_source_filter(db, pubs_q, source)
-    all_pubs = pubs_q.all() if pubs_q is not None else []
+        all_pubs = apply_source_filter(db, pubs_q, source).all()
+    else:
+        all_pubs = pubs_q.all() if pubs_q is not None else []
+    total_publications = len(all_pubs)
     cur_year = datetime.now().year
     pubs_this_year = [p for p in all_pubs if p.year == cur_year]
 
@@ -133,8 +146,6 @@ def get_dean_dashboard(
     # Top faculty
     top_faculty = []
     for f in all_faculty:
-        if not f.dept_id:
-            continue
         pub_count = len([p for p in all_pubs if p.faculty_id == f.faculty_id])
         fac_cit   = sum(
             p.citations_count or 0 for p in all_pubs
@@ -194,13 +205,7 @@ def get_dean_dashboard(
             break
 
     # Latest publications
-    latest_q = db.query(Publication).filter(
-        Publication.faculty_id.in_(faculty_ids)
-    )
-    if source and source != "all":
-        from app.source_filter import apply_source_filter
-        latest_q = apply_source_filter(db, latest_q, source)
-    latest_pubs = latest_q.order_by(Publication.year.desc()).limit(5).all() if faculty_ids else []
+    latest_pubs = sorted(all_pubs, key=lambda p: p.year or 0, reverse=True)[:5]
 
     latest_with_faculty = []
     for p in latest_pubs:
@@ -234,7 +239,7 @@ def get_dean_dashboard(
             ],
         },
         "kpis": {
-            "total_publications":     len(all_pubs),
+            "total_publications":     total_publications,
             "publications_this_year": len(pubs_this_year),
             "total_citations":        int(total_citations),
             "active_faculty":         len(all_faculty),

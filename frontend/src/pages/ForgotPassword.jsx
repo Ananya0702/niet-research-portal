@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import OtpInput from "../components/OtpInput";
 import {
@@ -18,6 +18,7 @@ export default function ForgotPassword() {
   const [masked, setMasked]         = useState("");
   const [otpRequested, setOtpRequested] = useState(false);
   const [resendIn, setResendIn]     = useState(300);
+  const retryRef                    = useRef(60);
   const [newPass, setNewPass]       = useState("");
   const [confirm, setConfirm]       = useState("");
   const [rules, setRules]           = useState([]);
@@ -33,7 +34,7 @@ export default function ForgotPassword() {
     }
   }, [resendIn, otpRequested, step]);
 
-  const resetOtpTimer = () => { setResendIn(300); setOtpRequested(true); };
+  const resetOtpTimer = (sec) => { setResendIn(sec || retryRef.current); setOtpRequested(true); };
 
   const go = async (fn, okCallback) => {
     setLoading(true); setError(""); setSuccess("");
@@ -51,7 +52,8 @@ export default function ForgotPassword() {
     e.preventDefault();
     go(() => forgotPasswordRequest(identifier), (res) => {
       setMasked(res.data.masked_contact);
-      resetOtpTimer();
+      retryRef.current = res.data.retry_after_seconds || 60;
+      resetOtpTimer(retryRef.current);
       setStep(1);
     });
   };
@@ -68,6 +70,7 @@ export default function ForgotPassword() {
     resetOtpTimer();
     go(() => forgotPasswordRequest(identifier), (res) => {
       setMasked(res.data.masked_contact);
+      retryRef.current = res.data.retry_after_seconds || 60;
     });
   };
 

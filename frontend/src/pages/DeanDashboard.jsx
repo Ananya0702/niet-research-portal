@@ -37,7 +37,7 @@ export default function DeanDashboard() {
 
   const load = useCallback((did) => {
     const qs = did ? `?dept_id=${did}` : "";
-    return API.get(`/dean/dashboard${qs}`).then(res => {
+    return API.get(`/dean/dashboard${qs}`, { params: { source: "google_scholar" } }).then(res => {
       setData(res.data);
       return res.data;
     });

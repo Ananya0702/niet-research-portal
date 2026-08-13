@@ -53,7 +53,7 @@ export default function HODDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    API.get("/hod/dashboard")
+    API.get("/hod/dashboard", { params: { source: "google_scholar" } })
       .then(res => setData(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));

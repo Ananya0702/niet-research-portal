@@ -101,13 +101,26 @@ def update_my_profile(updates: ProfileUpdate,
 
 # ── Existing dashboard route (must come AFTER /me/ routes) ──
 @router.get("/{faculty_id}/dashboard")
-def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
+def get_faculty_dashboard(faculty_id: int,
+                          source: str = "all",
+                          db: Session = Depends(get_db)):
 
     faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty not found")
 
-    pubs = db.query(Publication).filter(Publication.faculty_id == faculty_id).all()
+    base_q = db.query(Publication).filter(Publication.faculty_id == faculty_id)
+    if source == "google_scholar":
+        # Google Scholar ∪ ORCID, de-duplicated, feeds every figure so the
+        # totals, charts and lists stay consistent (and charts stay populated).
+        from app.source_filter import merge_source_publications
+        pubs = merge_source_publications(db, base_q)
+    elif source and source != "all":
+        from app.source_filter import apply_source_filter
+        pubs = apply_source_filter(db, base_q, source).all()
+    else:
+        pubs = base_q.all()
+    total_publications = len(pubs)
     current_year = datetime.now().year
     pubs_this_year = [p for p in pubs if p.year == current_year]
 
@@ -138,9 +151,7 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
         FacultyResearchArea.faculty_id == faculty_id
     ).order_by(FacultyResearchArea.expertise_percent.desc()).all()
 
-    recent_pubs = db.query(Publication).filter(
-        Publication.faculty_id == faculty_id
-    ).order_by(Publication.year.desc()).limit(5).all()
+    recent_pubs = sorted(pubs, key=lambda p: p.year or 0, reverse=True)[:5]
 
     achievements = db.query(Achievement).filter(
         Achievement.faculty_id == faculty_id
@@ -167,7 +178,7 @@ def get_faculty_dashboard(faculty_id: int, db: Session = Depends(get_db)):
             "google_scholar_id": faculty.google_scholar_id,
         },
         "kpis": {
-            "total_publications":  len(pubs),
+            "total_publications":  total_publications,
             "publications_this_year": len(pubs_this_year),
             "total_citations":     total_citations,
             "h_index":             faculty.h_index,
