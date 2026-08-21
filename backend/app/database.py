@@ -14,7 +14,26 @@ DB_NAME     = os.getenv("DB_NAME", "niet_research")
 
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-engine = create_engine(DATABASE_URL, echo=True)
+# Managed MySQL providers (Aiven, Railway public proxy, PlanetScale, ...)
+# usually require TLS. Set DB_SSL=true to encrypt the connection; set
+# DB_SSL_CA=/path/to/ca.pem when the provider's CA certificate is available.
+connect_args = {}
+if os.getenv("DB_SSL", "").strip().lower() in ("1", "true", "yes"):
+    ca = os.getenv("DB_SSL_CA", "").strip()
+    if ca:
+        connect_args["ssl_ca"] = ca
+        connect_args["ssl_verify_cert"] = True
+    else:
+        connect_args["ssl_verify_cert"] = False
+        connect_args["ssl_verify_identity"] = False
+
+engine = create_engine(
+    DATABASE_URL,
+    echo=os.getenv("DB_ECHO", "false").strip().lower() == "true",
+    pool_pre_ping=True,
+    pool_recycle=280,
+    connect_args=connect_args,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

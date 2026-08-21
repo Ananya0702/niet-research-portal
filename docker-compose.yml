@@ -1,0 +1,88 @@
+# NIET Research Portal — single-VPS production stack (Phase 2).
+#
+#   nginx(frontend) :80  ->  React build + path routing
+#     /api/    -> backend  (FastAPI, port 8000)
+#     /otp/    -> otp-api  (Email OTP, port 8001)
+#     /mlsvc/  -> ml-api   (ML classification, port 8002)
+#   mysql            -> database (internal only)
+#
+# First run:
+#   cp deploy/env/mysql.env.example deploy/env/mysql.env
+#   cp deploy/env/backend.env.example deploy/env/backend.env
+#   cp deploy/env/otp-api.env.example deploy/env/otp-api.env
+#   cp deploy/env/ml-api.env.example deploy/env/ml-api.env
+#   # ...edit the copied files with real values...
+#   docker compose up -d --build
+
+name: niet-portal
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    env_file: ./deploy/env/mysql.env
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # Expose to the host ONLY if you need external DB tools; never open
+    # this on a public cloud firewall.
+    # ports:
+    #   - "127.0.0.1:3306:3306"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: ./deploy/env/backend.env
+    environment:
+      # Override the DB target to the compose-internal MySQL. TLS is not
+      # needed on the private docker network.
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_SSL: "false"
+      OTP_API_BASE_URL: http://otp-api:8001
+    volumes:
+      - uploads_data:/srv/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  ml-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.ml
+    restart: unless-stopped
+    env_file: ./deploy/env/ml-api.env
+
+  otp-api:
+    build:
+      context: .
+      dockerfile: backend/otp_api/Dockerfile
+    restart: unless-stopped
+    env_file: ./deploy/env/otp-api.env
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Relative paths hit the nginx routes below — same-origin, no CORS.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - otp-api
+      - ml-api
+
+volumes:
+  mysql_data:
+  uploads_data:

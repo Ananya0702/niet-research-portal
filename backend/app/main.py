@@ -68,14 +68,23 @@ seed_admin()
 
 app = FastAPI(title="NIET Research Portal API", version="1.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+
+def _cors_origins():
+    """Local dev origins by default; extra production origins come from the
+    comma-separated CORS_ORIGINS env var (e.g. the Vercel frontend URL)."""
+    default = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
-    ],
+    ]
+    extra = os.getenv("CORS_ORIGINS", "")
+    return default + [o.strip() for o in extra.split(",") if o.strip()]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

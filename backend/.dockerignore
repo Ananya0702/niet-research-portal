@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+venv/
+.env
+.env.*
+!.env.example
+*.log
+*.sql
+uploads/
+otp_api/
+test.py
+add_more_journals.py
+expand_journals.py
+update_journals.py
+Dockerfile*
+.dockerignore

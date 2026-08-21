@@ -10,3 +10,7 @@ frontend/dist/
 *.pyc
 .DS_Store
 backend/app/uploads/
+
+# Real deployment secrets (examples stay tracked)
+deploy/env/*.env
+!deploy/env/*.env.example

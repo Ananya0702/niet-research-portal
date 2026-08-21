@@ -1,0 +1,23 @@
+# Production image dependencies.
+#
+# Same as the root requirements.txt minus torch/torchvision/torchaudio/
+# transformers (~2 GB). app/ml/classifier.py detects their absence and falls
+# back to the built-in scikit-learn model, so classification still works.
+fastapi
+uvicorn[standard]
+sqlalchemy
+pymysql
+cryptography
+python-jose
+passlib
+bcrypt==4.1.3
+python-dotenv
+pydantic[email]
+scholarly
+beautifulsoup4
+requests
+python-multipart
+openpyxl
+pandas
+scikit-learn
+rapidfuzz

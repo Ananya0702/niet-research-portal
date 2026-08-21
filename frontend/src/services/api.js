@@ -1,6 +1,8 @@
 import axios from "axios";
 
-export const BASE_URL = "http://127.0.0.1:8000";
+// Production base URL is injected at build time via VITE_API_BASE_URL.
+// Falls back to local dev server when the variable is absent.
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 const API = axios.create({
   baseURL: BASE_URL,
