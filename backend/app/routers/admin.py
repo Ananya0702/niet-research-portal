@@ -348,6 +348,19 @@ def update_faculty(faculty_id: int, data: dict,
         if key in data:
             setattr(faculty, key, data[key])
 
+    if "email" in data and data["email"]:
+        new_email = str(data["email"]).strip().lower()
+        if not new_email or "@" not in new_email:
+            raise HTTPException(status_code=400, detail="Invalid email address")
+        if new_email != (faculty.email or "").lower():
+            dup = db.query(Faculty).filter(
+                Faculty.email == new_email,
+                Faculty.faculty_id != faculty_id
+            ).first()
+            if dup:
+                raise HTTPException(status_code=400, detail="Email already registered with another faculty")
+            faculty.email = new_email
+
     if "password" in data and data["password"]:
         faculty.password_hash = get_password_hash(data["password"])
 

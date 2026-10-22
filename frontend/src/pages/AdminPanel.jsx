@@ -107,7 +107,7 @@ export default function AdminPanel() {
 
   // ── Faculty CRUD ──
   const handleCreate = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/faculty", { ...form, dept_id:form.dept_id?parseInt(form.dept_id):null, joining_year:parseInt(form.joining_year), }); showMsg("success", `✅ ${form.name} created`); setModal(false); setForm(EMPTY_FORM); fetchFaculty(); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
-  const handleUpdate = async (e) => { e.preventDefault(); setSaving(true); try { const {faculty_id, school_id, dept_id, role, ...rest} = editForm; if (!school_id) { showMsg("error","School is required"); setSaving(false); return; } if (role !== "dean_rd" && !dept_id) { showMsg("error","Department is required for HOD and Faculty"); setSaving(false); return; } await apiPut(`/admin/faculty/${editForm.faculty_id}`, editForm); showMsg("success","✅ Updated"); setEditModal(false); fetchFaculty(); } catch { showMsg("error","Update failed"); } finally { setSaving(false); } };
+  const handleUpdate = async (e) => { e.preventDefault(); setSaving(true); try { const {faculty_id, school_id, dept_id, role, ...rest} = editForm; if (!school_id) { showMsg("error","School is required"); setSaving(false); return; } if (role !== "dean_rd" && !dept_id) { showMsg("error","Department is required for HOD and Faculty"); setSaving(false); return; } await apiPut(`/admin/faculty/${editForm.faculty_id}`, editForm); showMsg("success","✅ Updated"); setEditModal(false); fetchFaculty(); } catch(err) { showMsg("error", err?.response?.data?.detail || "Update failed"); } finally { setSaving(false); } };
   const handleDeactivate = async (id,name) => { if (!window.confirm(`Deactivate ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}`); showMsg("success",`${name} deactivated`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const handleDelete = async (id,name) => { if (!window.confirm(`Permanently delete ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}?hard=true`); showMsg("success",`${name} deleted`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const [syncing, setSyncing] = useState(null);
@@ -433,7 +433,7 @@ function EditModal({ editForm,setEditForm,saving,handleUpdate,setEditModal,depts
 
   return (
     <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100 }}>
-      <div style={{ background:"#fff",borderRadius:14,padding:"24px 28px",width:480 }}>
+      <div style={{ background:"#fff",borderRadius:14,padding:"24px 28px",width:520,maxHeight:"90vh",overflowY:"auto" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
           <span style={{ fontSize:16,fontWeight:600 }}>Edit — {editForm.name||editForm.dept_name}</span>
           <span style={{ cursor:"pointer",color:"#888",fontSize:22 }} onClick={()=>setEditModal(false)}>×</span>
@@ -441,7 +441,10 @@ function EditModal({ editForm,setEditForm,saving,handleUpdate,setEditModal,depts
         <form onSubmit={handleUpdate}>
           {isFaculty ? (
             <>
-              <div style={{ marginBottom:14 }}><label style={lbl}>Full Name</label><input value={editForm.name||""} onChange={e=>setEditForm({...editForm,name:e.target.value})} style={inp} /></div>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
+                <div><label style={lbl}>Full Name *</label><input required value={editForm.name||""} onChange={e=>setEditForm({...editForm,name:e.target.value})} style={inp} /></div>
+                <div><label style={lbl}>Email Address *</label><input type="email" required value={editForm.email||""} onChange={e=>setEditForm({...editForm,email:e.target.value})} style={inp} placeholder="name@niet.co.in" /></div>
+              </div>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
                 <div><label style={lbl}>Role</label><select value={role} onChange={e=>{const r=e.target.value;setEditForm({...editForm,role:r,dept_id:r==="dean_rd"?null:editForm.dept_id});}} style={inp}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
                 <div><label style={lbl}>Designation</label><select value={editForm.designation||""} onChange={e=>setEditForm({...editForm,designation:e.target.value})} style={inp}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></div>
