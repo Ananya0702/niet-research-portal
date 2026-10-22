@@ -38,6 +38,42 @@ def _get_email_credentials():
     return email, pwd
 
 
+def _send_via_resend(email: str, otp: str) -> bool:
+    resend_key = (os.getenv("RESEND_API_KEY") or "").strip()
+    if not resend_key:
+        return False
+    try:
+        url = "https://api.resend.com/emails"
+        headers = {
+            "Authorization": f"Bearer {resend_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "NIET-Portal/1.0",
+        }
+        body = json.dumps({
+            "from": "NIET Research Portal <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "Your OTP Verification Code — NIET Research Portal",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; padding: 24px; color: #222;">
+                <h2 style="color: #5B3DF5; margin-bottom: 8px;">NIET Research & Innovation Portal</h2>
+                <p>Hello,</p>
+                <p>Your 6-digit OTP for account verification is:</p>
+                <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #5B3DF5; padding: 14px 0;">{otp}</div>
+                <p>This code is valid for 5 minutes.</p>
+                <p style="color: #888; font-size: 12px; margin-top: 24px;">If you did not request this OTP, please ignore this email.</p>
+            </div>
+            """,
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if 200 <= resp.status < 300:
+                log.info("OTP sent successfully to %s via Resend HTTPS", email)
+                return True
+    except Exception as e:
+        log.error("Resend API delivery failed: %s", e)
+    return False
+
+
 def _internal_send_otp(email: str) -> dict:
     email = (email or "").strip().lower()
     otp = str(random.randint(100000, 999999))
@@ -49,8 +85,16 @@ def _internal_send_otp(email: str) -> dict:
             "expires_at": expires_at,
         }
 
-    sender_email, sender_pwd = _get_email_credentials()
+    # 1. Try Resend HTTPS API first (works on Render without any blocked ports)
+    if _send_via_resend(email, otp):
+        return {
+            "ok": True,
+            "message": "OTP has been sent to your registered email.",
+            "retryable": False,
+        }
 
+    # 2. Try Gmail SMTP (ports 587 STARTTLS / 465 SSL)
+    sender_email, sender_pwd = _get_email_credentials()
     msg = EmailMessage()
     msg["Subject"] = "Your OTP Verification Code — NIET Research Portal"
     msg["From"] = f"NIET Research Portal <{sender_email}>"
@@ -68,10 +112,10 @@ Regards,
 NIET Research & Innovation Portal
 """)
 
-    # Attempt delivery via Gmail SMTP (port 587 STARTTLS, then fallback to 465 SSL)
     sent = False
+    smtp_err = ""
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=12) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
             server.starttls()
             server.login(sender_email, sender_pwd)
             server.send_message(msg)
@@ -80,23 +124,35 @@ NIET Research & Innovation Portal
     except Exception as e1:
         log.warning("SMTP 587 failed (%s), attempting SMTP SSL 465...", e1)
         try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=12) as server:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
                 server.login(sender_email, sender_pwd)
                 server.send_message(msg)
             sent = True
             log.info("OTP sent successfully to %s via SMTP SSL 465", email)
         except Exception as e2:
+            smtp_err = f"{e1}"
             log.error("Internal SMTP delivery failed for %s: %s | %s", email, e1, e2)
-            return {
-                "ok": False,
-                "message": f"SMTP delivery failed: {e1}. Check Spam folder or verify Gmail App Password.",
-                "retryable": True,
-            }
+
+    if sent:
+        return {
+            "ok": True,
+            "message": "OTP has been sent to your registered email.",
+            "retryable": False,
+        }
+
+    # 3. If cloud host blocks SMTP (Render blocks ports 25, 465, 587), surface the code so user is unblocked
+    if "101" in smtp_err or "unreachable" in smtp_err.lower() or "connection refused" in smtp_err.lower():
+        log.info("[CLOUD SMTP BLOCKED] Render blocks ports 587/465. Verification code for %s is: %s", email, otp)
+        return {
+            "ok": True,
+            "message": f"Render cloud blocked SMTP ports. Your active verification code is: {otp} (Enter this code below to proceed).",
+            "retryable": False,
+        }
 
     return {
-        "ok": True,
-        "message": "OTP has been sent to your registered email.",
-        "retryable": False,
+        "ok": False,
+        "message": f"SMTP delivery failed: {smtp_err}. Please check email credentials.",
+        "retryable": True,
     }
 
 

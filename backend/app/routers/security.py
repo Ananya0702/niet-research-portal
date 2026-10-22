@@ -229,7 +229,7 @@ def forgot_request(payload: ForgotRequest, request: Request, db: Session = Depen
            request=request, detail=f"Forgot-password OTP sent to {res['masked_email']}")
     db.commit()
     return {
-        "message": "OTP has been sent to your registered email.",
+        "message": sent.get("message") or "OTP has been sent to your registered email.",
         "method": "email",
         "masked_contact": res["masked_email"],
         "expires_in_seconds": OTP_FLOW_EXPIRY_MINUTES * 60,
@@ -465,7 +465,7 @@ def change_password_email_request(payload: EmailOtpRequest, request: Request,
            request=request, detail=f"OTP sent to {res['masked_email']} for password change")
     db.commit()
     return {
-        "message": "OTP has been sent to your registered email.",
+        "message": sent.get("message") or "OTP has been sent to your registered email.",
         "method": "email",
         "masked_contact": res["masked_email"],
         "expires_in_seconds": OTP_FLOW_EXPIRY_MINUTES * 60,

@@ -108,6 +108,7 @@ export default function Settings() {
     const res = await runPw(() => emailChangePasswordRequest(account?.email || ""));
     if (!res) return;
     setPwMasked(res.data.masked_contact);
+    if (res.data.message) setPwSuccess(res.data.message);
     resendRef.current = res.data.retry_after_seconds || 60;
     resetOtpTimer(res.data.retry_after_seconds || 60);
     setPwStep(1);
