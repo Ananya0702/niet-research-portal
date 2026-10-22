@@ -110,7 +110,9 @@ def _do_sync(platform: str, faculty, db: Session) -> dict:
     db.commit()
 
     try:
-        result = provider.fetch(account_id)
+        author_name = getattr(faculty, "name", "") or ""
+        orcid_id = getattr(faculty, "orcid_id", "") or ""
+        result = provider.fetch(account_id, author_name=author_name, orcid_id=orcid_id)
     except Exception:
         setattr(faculty, status_attr, "error")
         db.commit()
@@ -261,7 +263,14 @@ def _apply_scholar_metrics(faculty, db, result):
     if not raw:
         from app.scraper.scholar_sync import fetch_scholar_data
         try:
-            raw = fetch_scholar_data(faculty.google_scholar_id, mock=False)
+            author_name = getattr(faculty, "name", "") or ""
+            orcid_id = getattr(faculty, "orcid_id", "") or ""
+            raw = fetch_scholar_data(
+                faculty.google_scholar_id,
+                mock=False,
+                author_name=author_name,
+                orcid_id=orcid_id,
+            )
         except Exception as e:
             print(f"[Scholar] metrics fetch failed: {e}")
             raw = {}

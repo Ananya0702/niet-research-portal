@@ -15,10 +15,10 @@ class GoogleScholarService(ResearchProvider):
 
     def fetch(self, account_id: str, mock: bool = False, **kwargs) -> SyncResult:
         aid = scholar_sync.extract_scholar_id(account_id)
-        raw = scholar_sync.fetch_scholar_data(aid, mock=mock)
+        raw = scholar_sync.fetch_scholar_data(aid, mock=mock, **kwargs)
         pubs = raw.get("publications", [])
         records = []
-        for p in pubs:
+        for idx, p in enumerate(pubs):
             records.append(PublicationRecord(
                 title=p.get("title") or "",
                 journal_name=p.get("journal_name") or "Unknown Journal",
@@ -27,7 +27,7 @@ class GoogleScholarService(ResearchProvider):
                 authors=p.get("authors") or "",
                 citation_count=p.get("citations_count") or 0,
                 publication_type=p.get("publication_type") or "",
-                source_id=p.get("source_id"),
+                source_id=p.get("source_id") or f"gs_{idx+1}",
                 external_url=f"https://scholar.google.com/citations?view_op=list_works&hl=en&user={aid}",
             ))
         return SyncResult(

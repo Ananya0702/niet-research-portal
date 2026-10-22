@@ -1,5 +1,6 @@
 import re
 import time
+import urllib.parse
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -99,7 +100,7 @@ def extract_scholar_id(raw_input: str) -> str:
     return s
 
 
-def fetch_scholar_data(scholar_id: str, mock: bool = False):
+def fetch_scholar_data(scholar_id: str, mock: bool = False, author_name: str = "", orcid_id: str = ""):
     if mock or not scholar_id:
         return _sample_scholar_data()
 
@@ -113,9 +114,19 @@ def fetch_scholar_data(scholar_id: str, mock: bool = False):
         if data and (data.get("publications") or data.get("h_index")):
             return data
     except Exception as e:
-        print(f"[Scholar] HTTP scraping failed: {e}")
+        print(f"[Scholar] Direct HTTP scraping failed or rate-limited: {e}")
 
-    # Tier 2: scholarly library (slow — fills each pub individually)
+    # Tier 2: OpenAlex Academic Bridge (100% cloud-friendly, zero IP blocks)
+    try:
+        print(f"[Scholar] Attempting OpenAlex academic bridge for author '{author_name}', ORCID '{orcid_id}'...")
+        data = _fetch_via_openalex(scholar_id=clean_id, author_name=author_name, orcid_id=orcid_id)
+        if data and data.get("publications"):
+            print(f"[Scholar] OpenAlex bridge succeeded with {len(data['publications'])} publications.")
+            return data
+    except Exception as e:
+        print(f"[Scholar] OpenAlex bridge failed: {e}")
+
+    # Tier 3: scholarly library (slow — fills each pub individually)
     try:
         data = _fetch_via_scholarly(clean_id)
         if data and data.get("publications"):
@@ -123,8 +134,127 @@ def fetch_scholar_data(scholar_id: str, mock: bool = False):
     except Exception as e:
         print(f"[Scholar] scholarly failed: {e}")
 
-    # Tier 3: If blocked by Google CAPTCHA on cloud server
+    # Tier 4: If blocked by Google CAPTCHA on cloud server and all fallbacks exhausted
     raise Exception("Google Scholar rate-limited cloud server. Please sync using your local machine or use ORCID.")
+
+
+def _fetch_via_openalex(scholar_id: str = "", author_name: str = "", orcid_id: str = "") -> dict:
+    """Fetch verified publications and metrics from OpenAlex academic graph.
+    OpenAlex has 250M+ indexed works, open REST API, and never blocks cloud servers.
+    """
+    headers = {"User-Agent": "NIETResearchPortal/1.0 (mailto:admin@niet.co.in)"}
+    works = []
+    author_info = {}
+
+    # 1. Match by ORCID
+    clean_orcid = (orcid_id or "").strip()
+    if clean_orcid:
+        try:
+            author_url = f"https://api.openalex.org/authors?filter=orcid:{clean_orcid}"
+            resp = requests.get(author_url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                if results:
+                    author_info = results[0]
+
+            works_url = f"https://api.openalex.org/works?filter=author.orcid:{clean_orcid}&sort=cited_by_count:desc&per-page=100"
+            wresp = requests.get(works_url, headers=headers, timeout=20)
+            if wresp.status_code == 200:
+                works = wresp.json().get("results", [])
+        except Exception as e:
+            print(f"[Scholar/OpenAlex] ORCID lookup error: {e}")
+
+    # 2. Match by author_name if ORCID returned nothing
+    if not works and author_name:
+        try:
+            search_name = author_name.strip()
+            for prefix in ["Dr.", "Prof.", "Mr.", "Ms.", "Mrs.", "Dr ", "Prof ", "Mr "]:
+                if search_name.startswith(prefix):
+                    search_name = search_name[len(prefix):].strip()
+
+            encoded_name = urllib.parse.quote(search_name)
+            search_url = f"https://api.openalex.org/authors?filter=display_name.search:{encoded_name}"
+            resp = requests.get(search_url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                if results:
+                    best = results[0]
+                    for r in results:
+                        affils = " ".join([a.get("institution", {}).get("display_name", "") for a in r.get("affiliations", [])]).lower()
+                        if "noida" in affils or "niet" in affils or "engineering" in affils:
+                            best = r
+                            break
+                    author_info = best
+                    works_url = best.get("works_api_url")
+                    if works_url:
+                        wresp = requests.get(f"{works_url}&sort=cited_by_count:desc&per-page=100", headers=headers, timeout=20)
+                        if wresp.status_code == 200:
+                            works = wresp.json().get("results", [])
+        except Exception as e:
+            print(f"[Scholar/OpenAlex] Name search error: {e}")
+
+    if not works:
+        return {}
+
+    summary_stats = author_info.get("summary_stats", {})
+    h_index = summary_stats.get("h_index") or 0
+    i10_index = summary_stats.get("i10_index") or 0
+    total_cited = author_info.get("cited_by_count") or sum(w.get("cited_by_count", 0) for w in works)
+
+    publications = []
+    for idx, w in enumerate(works):
+        title = (w.get("display_name") or w.get("title") or "").strip()
+        if not title:
+            continue
+
+        source_obj = (w.get("primary_location") or {}).get("source") or {}
+        journal = source_obj.get("display_name") or "Academic Proceedings"
+
+        year = w.get("publication_year") or datetime.now().year
+        citations = w.get("cited_by_count") or 0
+
+        doi = w.get("doi")
+        if doi and doi.startswith("https://doi.org/"):
+            doi = doi.replace("https://doi.org/", "")
+
+        work_type = (w.get("type") or "").lower()
+        pub_type = "Conference" if ("conference" in work_type or "proceeding" in work_type) else "Journal"
+
+        authorships = w.get("authorships", [])
+        author_names = [a.get("author", {}).get("display_name", "") for a in authorships if a.get("author")]
+        authors_str = ", ".join(filter(None, author_names)) or author_name or "Faculty Author"
+
+        publications.append({
+            "title": title,
+            "journal_name": journal,
+            "year": year,
+            "citations_count": citations,
+            "doi": doi,
+            "publication_type": pub_type,
+            "authors": authors_str,
+            "source_id": f"gs_{idx+1}",
+        })
+
+    # Derive h-index if missing
+    if not h_index and publications:
+        cits = sorted([p["citations_count"] for p in publications], reverse=True)
+        h = 0
+        for i, c in enumerate(cits):
+            if c >= i + 1:
+                h = i + 1
+            else:
+                break
+        h_index = h
+
+    if not i10_index and publications:
+        i10_index = sum(1 for p in publications if p["citations_count"] >= 10)
+
+    return {
+        "h_index": h_index,
+        "i10_index": i10_index,
+        "citedby": total_cited,
+        "publications": publications,
+    }
 
 
 def _fetch_via_scholarly(scholar_id: str) -> dict:
