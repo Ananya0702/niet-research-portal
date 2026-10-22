@@ -84,7 +84,13 @@ export default function Settings() {
   const runPw = async (fn) => {
     setPwLoading(true); setPwError(""); setPwSuccess("");
     try { return await fn(); }
-    catch (err) { setPwError(err.response?.data?.detail || "Something went wrong."); return null; }
+    catch (err) {
+      const d = err.response?.data;
+      const detail = typeof d === "object" ? d?.detail : (typeof d === "string" && !d.includes("<html") ? d : null);
+      const msg = detail || (err.response?.status === 502 || err.response?.status === 504 ? "Server is restarting, please retry in 10 seconds." : null) || err.message || "Something went wrong.";
+      setPwError(msg);
+      return null;
+    }
     finally { setPwLoading(false); }
   };
 

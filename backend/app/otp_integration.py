@@ -249,8 +249,8 @@ def verify_otp(email: str, otp: str) -> dict:
 # OTP is ever generated or stored by the portal.
 
 FLOW_EXPIRY_MINUTES = 5            # matches the external API's OTP lifetime
-RESEND_COOLDOWN_SECONDS = 60       # min wait between sends
-MAX_REQUESTS_PER_WINDOW = 3        # sends allowed per faculty per window
+RESEND_COOLDOWN_SECONDS = 15       # min wait between sends
+MAX_REQUESTS_PER_WINDOW = 20       # sends allowed per faculty per window
 REQUEST_WINDOW_MINUTES = 10
 MAX_ATTEMPTS = 5                   # failed verify attempts per OTP
 
