@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 
 # Load .env file
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 app = FastAPI(title="Email OTP API")
 
@@ -84,6 +84,15 @@ OTP Verification System
     )
 
     try:
+        # Local/dev bypass: if credentials missing or placeholders, skip actual email sending
+        if not EMAIL_ADDRESS or not EMAIL_APP_PASSWORD or \
+           EMAIL_ADDRESS == "your_email@gmail.com" or \
+           EMAIL_APP_PASSWORD == "your_gmail_app_password":
+            print(f"[DEV OTP] {email} -> {otp} (expires {expiry_time})")
+            return {
+                "success": True,
+                "message": "OTP sent successfully (dev mode)"
+            }
 
         # Connect to Gmail SMTP
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
@@ -148,13 +157,13 @@ def verify_otp(request: VerifyOTPRequest):
 
         raise HTTPException(
             status_code=400,
-            detail="Invalid OTP."
+            detail="Invalid OTP. Please try again."
         )
 
-    # OTP is correct
+    # OTP is valid, remove it after successful verification
     del otp_storage[email]
 
     return {
         "success": True,
-        "message": "OTP verified successfully!"
+        "message": "OTP verified successfully"
     }

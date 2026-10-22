@@ -14,3 +14,8 @@ backend/app/uploads/
 # Real deployment secrets (examples stay tracked)
 deploy/env/*.env
 !deploy/env/*.env.example
+
+# Database dumps and credential exports (contain password hashes / plaintext)
+backend/NIET_Research_Full_Dump.sql
+backend/*.dump.sql
+backend/credentials_reset_*.csv
