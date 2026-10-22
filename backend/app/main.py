@@ -114,3 +114,16 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
 @app.get("/")
 def root():
     return {"message": "NIET Research Portal API is running ✓"}
+
+@app.post("/send-otp")
+def send_otp_endpoint(payload: dict):
+    from app.otp_integration import send_otp
+    email = payload.get("email")
+    return send_otp(email)
+
+@app.post("/verify-otp")
+def verify_otp_endpoint(payload: dict):
+    from app.otp_integration import verify_otp
+    email = payload.get("email")
+    otp = payload.get("otp")
+    return verify_otp(email, otp)
