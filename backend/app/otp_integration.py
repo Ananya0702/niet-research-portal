@@ -33,8 +33,8 @@ _internal_otp_lock = threading.Lock()
 
 
 def _get_email_credentials():
-    email = (os.getenv("EMAIL_ADDRESS") or os.getenv("SMTP_USER") or "erakanksha12d@gmail.com").strip()
-    pwd = (os.getenv("EMAIL_APP_PASSWORD") or os.getenv("SMTP_PASSWORD") or "aeexcyuneovoqvmw").strip()
+    email = (os.getenv("EMAIL_ADDRESS") or os.getenv("SMTP_USER") or "ananyashukla.1427@gmail.com").strip()
+    pwd = (os.getenv("EMAIL_APP_PASSWORD") or os.getenv("SMTP_PASSWORD") or "xyiyimdruluutckv").strip()
     return email, pwd
 
 
@@ -87,6 +87,11 @@ NIET Research & Innovation Portal
             log.info("OTP sent successfully to %s via SMTP SSL 465", email)
         except Exception as e2:
             log.error("Internal SMTP delivery failed for %s: %s | %s", email, e1, e2)
+            return {
+                "ok": False,
+                "message": f"SMTP delivery failed: {e1}. Check Spam folder or verify Gmail App Password.",
+                "retryable": True,
+            }
 
     return {
         "ok": True,

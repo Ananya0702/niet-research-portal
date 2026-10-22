@@ -123,9 +123,8 @@ def fetch_scholar_data(scholar_id: str, mock: bool = False):
     except Exception as e:
         print(f"[Scholar] scholarly failed: {e}")
 
-    # Tier 3: If blocked by Google CAPTCHA on cloud server, fall back gracefully to sample publications
-    print(f"[Scholar] Live fetch was rate-limited or blocked by Google CAPTCHA for '{clean_id}'. Using sample research dataset as fallback.")
-    return _sample_scholar_data()
+    # Tier 3: If blocked by Google CAPTCHA on cloud server
+    raise Exception("Google Scholar rate-limited cloud server. Please sync using your local machine or use ORCID.")
 
 
 def _fetch_via_scholarly(scholar_id: str) -> dict:

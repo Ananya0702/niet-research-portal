@@ -363,6 +363,8 @@ def update_faculty(faculty_id: int, data: dict,
 
     if "password" in data and data["password"]:
         faculty.password_hash = get_password_hash(data["password"])
+        faculty.force_password_reset = False
+        faculty.last_password_changed = dt.now()
 
     db.commit()
     return {"message": "Updated successfully"}

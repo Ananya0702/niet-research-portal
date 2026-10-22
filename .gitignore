@@ -19,3 +19,4 @@ deploy/env/*.env
 backend/NIET_Research_Full_Dump.sql
 backend/*.dump.sql
 backend/credentials_reset_*.csv
+backend/sync_live_scholar.py

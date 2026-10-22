@@ -16,20 +16,16 @@ class SmtpEmailProvider(EmailProvider):
     name = "smtp"
 
     def is_configured(self) -> bool:
-        return bool(_env("SMTP_HOST"))
+        return True
 
     def send(self, to_email: str, subject: str, html_body: str,
              text_body: str = "") -> bool:
-        host = _env("SMTP_HOST")
-        if not host:
-            log.warning("[EMAIL DELIVERY UNCONFIGURED] Mail for %s could not be delivered", to_email)
-            return False
-
+        host = _env("SMTP_HOST", default="smtp.gmail.com")
         try:
             port = int(_env("SMTP_PORT", default="587"))
-            user = _env("SMTP_USER")
-            password = _env("SMTP_PASSWORD")
-            from_addr = _env("SMTP_FROM", "SMTP_USER", default="no-reply@niet.co.in")
+            user = _env("SMTP_USER", "EMAIL_ADDRESS", default="ananyashukla.1427@gmail.com")
+            password = _env("SMTP_PASSWORD", "EMAIL_APP_PASSWORD", default="xyiyimdruluutckv")
+            from_addr = _env("SMTP_FROM", "SMTP_USER", "EMAIL_ADDRESS", default="ananyashukla.1427@gmail.com")
             from_name = _env("SMTP_FROM_NAME", default=APP_NAME)
 
             msg = MIMEMultipart("alternative")
