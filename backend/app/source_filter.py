@@ -35,7 +35,7 @@ def apply_source_filter(db, query, source):
         )
     return query.outerjoin(sub, sub.c.pub_id == Publication.pub_id).filter(
         or_(sub.c.pub_id.isnot(None), Publication.source_platform == source)
-    )
+    ).distinct()
 
 
 def pub_sources_by_pub(db, pub_ids):

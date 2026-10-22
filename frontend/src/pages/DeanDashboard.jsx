@@ -33,29 +33,42 @@ export default function DeanDashboard() {
   const [loading,   setLoading]   = useState(true);
   const [refreshing,setRefreshing]= useState(false);
   const [error,     setError]     = useState(false);
+  const [errorMsg,  setErrorMsg]  = useState("");
   const [deptId,    setDeptId]    = useState(null); // null = all depts in assigned school
+  const [source,    setSource]    = useState("all");
 
-  const load = useCallback((did) => {
-    const qs = did ? `?dept_id=${did}` : "";
-    return API.get(`/dean/dashboard${qs}`, { params: { source: "google_scholar" } }).then(res => {
+  const SOURCE_OPTIONS = [
+    { key:"all", label:"All Sources" },
+    { key:"manual", label:"📝 Manual" },
+    { key:"google_scholar", label:"🎓 Google Scholar" },
+    { key:"orcid", label:"🆔 ORCID" },
+    { key:"scopus", label:"📘 Scopus" },
+  ];
+
+  const load = useCallback((did, src) => {
+    const params = {};
+    if (did) params.dept_id = did;
+    if (src && src !== "all") params.source = src;
+    return API.get("/dean/dashboard", { params }).then(res => {
       setData(res.data);
+      setError(false);
       return res.data;
     });
   }, []);
 
   useEffect(() => {
     setLoading(true);
-    load(null)
-      .catch(() => setError(true))
+    load(deptId, source)
+      .catch((err) => {
+        console.error("Dean dashboard error:", err);
+        setError(true);
+        setErrorMsg(err.response?.data?.detail || err.message || "Error loading data.");
+      })
       .finally(() => setLoading(false));
-  }, [load]);
+  }, [load, deptId, source]);
 
   const handleDeptChange = (did) => {
     setDeptId(did);
-    setRefreshing(true);
-    load(did)
-      .catch(() => setError(true))
-      .finally(() => setRefreshing(false));
   };
 
   if (loading) return (
@@ -69,7 +82,13 @@ export default function DeanDashboard() {
 
   if (error || !data) return (
     <Layout>
-      <p style={{ padding:40, color:"red" }}>Error loading data.</p>
+      <div style={{ padding:40 }}>
+        <p style={{ color:"red", fontSize:15, fontWeight:600 }}>Error loading data</p>
+        <p style={{ color:"#666", fontSize:12, marginTop:6 }}>{errorMsg || "Could not retrieve dean dashboard figures."}</p>
+        <button onClick={() => { setError(false); setLoading(true); load(deptId, source).finally(() => setLoading(false)); }} style={{ marginTop:14, padding:"8px 18px", background:"#534AB7", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontSize:12 }}>
+          Retry
+        </button>
+      </div>
     </Layout>
   );
 
@@ -147,6 +166,20 @@ export default function DeanDashboard() {
                 {dept.dept_code} — {dept.dept_name}
               </option>
             ))}
+          </select>
+
+          {/* Source Filter Dropdown */}
+          <select
+            value={source}
+            onChange={e => setSource(e.target.value)}
+            style={{
+              padding:"7px 14px", borderRadius:20,
+              border:"1px solid #ddd", fontSize:12,
+              fontWeight:600, color: source !== "all" ? "#0C447C" : "#555",
+              background: source !== "all" ? "#E6F1FB" : "#fff", cursor:"pointer",
+              outline:"none",
+            }}>
+            {SOURCE_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
 
           {/* Clear Department Filter */}

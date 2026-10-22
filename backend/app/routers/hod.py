@@ -59,12 +59,7 @@ def get_hod_dashboard(source: str = "all",
     base_q = db.query(Publication).filter(
         Publication.faculty_id.in_(faculty_ids)
     )
-    if source == "google_scholar":
-        # Google Scholar ∪ ORCID, de-duplicated, feeds every figure so the
-        # totals, charts and lists stay consistent (and charts stay populated).
-        from app.source_filter import merge_source_publications
-        all_pubs = merge_source_publications(db, base_q)
-    elif source and source != "all":
+    if source and source != "all":
         from app.source_filter import apply_source_filter
         all_pubs = apply_source_filter(db, base_q, source).all()
     else:

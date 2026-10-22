@@ -110,12 +110,7 @@ def get_faculty_dashboard(faculty_id: int,
         raise HTTPException(status_code=404, detail="Faculty not found")
 
     base_q = db.query(Publication).filter(Publication.faculty_id == faculty_id)
-    if source == "google_scholar":
-        # Google Scholar ∪ ORCID, de-duplicated, feeds every figure so the
-        # totals, charts and lists stay consistent (and charts stay populated).
-        from app.source_filter import merge_source_publications
-        pubs = merge_source_publications(db, base_q)
-    elif source and source != "all":
+    if source and source != "all":
         from app.source_filter import apply_source_filter
         pubs = apply_source_filter(db, base_q, source).all()
     else:

@@ -31,12 +31,22 @@ function KPICard({ icon, label, value, growth, bg }) {
 export default function Dashboard() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(!!localStorage.getItem("faculty_id"));
+  const [source,  setSource]  = useState("all");
+
+  const SOURCE_OPTIONS = [
+    { key:"all", label:"All Sources" },
+    { key:"manual", label:"📝 Manual" },
+    { key:"google_scholar", label:"🎓 Google Scholar" },
+    { key:"orcid", label:"🆔 ORCID" },
+    { key:"scopus", label:"📘 Scopus" },
+  ];
 
   useEffect(() => {
     const id = localStorage.getItem("faculty_id");
     if (!id) return;
-    getDashboard(id, "google_scholar").then(res => setData(res.data)).catch(console.error).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    getDashboard(id, source).then(res => setData(res.data)).catch(console.error).finally(() => setLoading(false));
+  }, [source]);
 
   if (loading) return (
     <Layout>
@@ -63,11 +73,19 @@ export default function Dashboard() {
       {/* Topbar */}
       <div style={{
         background: "#fff", borderBottom: "1px solid #eee",
-        padding: "12px 20px", flexShrink: 0,
+        padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0,
       }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Faculty Dashboard</div>
-        <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
-          Welcome, {faculty.name} · {faculty.designation} · Academic Year {new Date().getFullYear()}
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>Faculty Dashboard</div>
+          <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
+            Welcome, {faculty.name} · {faculty.designation} · Academic Year {new Date().getFullYear()}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "#888", fontWeight: 500 }}>Source:</span>
+          <select value={source} onChange={e => setSource(e.target.value)} style={{ padding: "6px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 11, outline: "none", fontWeight: source !== "all" ? 600 : 400, background: "#fff", cursor: "pointer" }}>
+            {SOURCE_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
         </div>
       </div>
 
