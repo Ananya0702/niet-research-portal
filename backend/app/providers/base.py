@@ -33,6 +33,7 @@ class SyncResult:
     total_fetched: int = 0
     error: Optional[str] = None
     records: List[PublicationRecord] = field(default_factory=list)
+    raw_metrics: dict = field(default_factory=dict)
 
 
 class ResearchProvider:

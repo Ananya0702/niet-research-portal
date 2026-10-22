@@ -249,15 +249,24 @@ def _do_sync(platform: str, faculty, db: Session) -> dict:
         "citations_updated": updated_count,
         "total_fetched":     result.total_fetched,
         "total_publications": faculty.total_publications,
+        "h_index":           faculty.h_index or 0,
+        "total_citations":   faculty.total_citations or 0,
     }
 
 
 def _apply_scholar_metrics(faculty, db, result):
     if not result.records:
         return
-    from app.scraper.scholar_sync import fetch_scholar_data
+    raw = getattr(result, "raw_metrics", {})
+    if not raw:
+        from app.scraper.scholar_sync import fetch_scholar_data
+        try:
+            raw = fetch_scholar_data(faculty.google_scholar_id, mock=False)
+        except Exception as e:
+            print(f"[Scholar] metrics fetch failed: {e}")
+            raw = {}
+
     try:
-        raw = fetch_scholar_data(faculty.google_scholar_id, mock=False)
         if raw.get("h_index"):
             faculty.h_index = float(raw["h_index"])
         if raw.get("i10_index"):

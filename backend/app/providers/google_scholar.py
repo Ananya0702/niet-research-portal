@@ -10,12 +10,12 @@ class GoogleScholarService(ResearchProvider):
     platform = "google_scholar"
 
     def validate_id(self, account_id: str) -> bool:
-        # Google Scholar user ids are 12-char alphanumeric strings.
-        aid = (account_id or "").strip()
-        return len(aid) == 12 and aid.isalnum()
+        aid = scholar_sync.extract_scholar_id(account_id)
+        return len(aid) == 12
 
     def fetch(self, account_id: str, mock: bool = False, **kwargs) -> SyncResult:
-        raw = scholar_sync.fetch_scholar_data(account_id, mock=mock)
+        aid = scholar_sync.extract_scholar_id(account_id)
+        raw = scholar_sync.fetch_scholar_data(aid, mock=mock)
         pubs = raw.get("publications", [])
         records = []
         for p in pubs:
@@ -28,7 +28,7 @@ class GoogleScholarService(ResearchProvider):
                 citation_count=p.get("citations_count") or 0,
                 publication_type=p.get("publication_type") or "",
                 source_id=p.get("source_id"),
-                external_url=f"https://scholar.google.com/citations?view_op=list_works&hl=en&user={account_id}",
+                external_url=f"https://scholar.google.com/citations?view_op=list_works&hl=en&user={aid}",
             ))
         return SyncResult(
             platform=self.platform,
@@ -37,4 +37,9 @@ class GoogleScholarService(ResearchProvider):
             skipped=0,
             total_fetched=len(records),
             records=records,
+            raw_metrics={
+                "h_index": raw.get("h_index", 0),
+                "i10_index": raw.get("i10_index", 0),
+                "citedby": raw.get("citedby", 0),
+            },
         )
