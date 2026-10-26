@@ -1638,6 +1638,12 @@ function DeptsView({ depts, schools, faculty, setDeptModal, setEditModal, setEdi
 }
 
 function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFilter, deptFilter, setDeptFilter, depts, setModal, setEditModal, setEditForm, handleDeactivate, handleDelete, P, viewFacultyProfile, syncing, handleAdminSync, setImportEntity }) {
+  const [facultyPage, setFacultyPage] = useState(0);
+  const facultyPageSize = 10;
+  const facultyPageCount = Math.ceil(filteredFaculty.length / facultyPageSize);
+  const pageFaculty = filteredFaculty.slice(facultyPage * facultyPageSize, (facultyPage + 1) * facultyPageSize);
+  useEffect(() => setFacultyPage(0), [filteredFaculty, roleFilter, deptFilter]);
+
   const PlatformBadges = ({ f }) => {
     const items = [
       { key:"scholar", label:"Scholar", connected:f.scholar_connected },
@@ -1667,13 +1673,13 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
         <button onClick={()=>setImportEntity("faculty")} style={{ background:"#fff", color:P, padding:"8px 16px", borderRadius:8, fontSize:12, fontWeight:500, border:"1px solid "+P, cursor:"pointer" }}>📥 Import</button>
       </div>
       <div style={{ display:"flex", gap:10, marginBottom:14 }}>
-        <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
+        <select value={roleFilter} onChange={e=>{setFacultyPage(0);setRoleFilter(e.target.value);}} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
           <option value="all">All Roles</option>
           <option value="faculty">Faculty</option>
           <option value="hod">HOD</option>
           <option value="dean_rd">Dean</option>
         </select>
-        <select value={deptFilter} onChange={e=>setDeptFilter(e.target.value)} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
+        <select value={deptFilter} onChange={e=>{setFacultyPage(0);setDeptFilter(e.target.value);}} style={{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:8, fontSize:12, outline:"none" }}>
           <option value="all">All Departments</option>
           {depts.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}
         </select>
@@ -1687,7 +1693,7 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
           </thead>
           <tbody>
             {loading ? <tr><td colSpan={7} style={{padding:30,textAlign:"center"}}>Loading...</td></tr>
-            : filteredFaculty.map(f=>(
+            : pageFaculty.map(f=>(
               <tr key={f.faculty_id} style={{ borderBottom:"1px solid #f5f5f5", opacity:f.is_active?1:0.5 }}>
                 <td style={{ padding:"8px 12px", fontWeight:500, cursor:"pointer" }} onClick={()=>viewFacultyProfile(f.faculty_id)}>
                   <span style={{ color:P, borderBottom:"1px dashed rgba(91,61,245,0.3)" }}>{f.name}</span>
@@ -1721,6 +1727,14 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
           </tbody>
         </table>
       </div>
+      {!loading && filteredFaculty.length > 0 && <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, marginTop:14, flexWrap:"wrap" }}>
+        <span style={{ fontSize:11, color:"#777" }}>Showing {facultyPage * facultyPageSize + 1}–{Math.min((facultyPage + 1) * facultyPageSize, filteredFaculty.length)} of {filteredFaculty.length} faculty members</span>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <button type="button" onClick={()=>setFacultyPage(page=>Math.max(0,page-1))} disabled={facultyPage===0} style={{ padding:"6px 10px", border:"1px solid #e3e1ed", borderRadius:7, background:facultyPage===0?"#f8f8fb":"#fff", color:facultyPage===0?"#aaa":P, fontSize:11, cursor:facultyPage===0?"not-allowed":"pointer" }}>Previous</button>
+          <span style={{ padding:"0 5px", fontSize:11, color:"#666" }}>Page {facultyPage+1} of {facultyPageCount}</span>
+          <button type="button" onClick={()=>setFacultyPage(page=>Math.min(facultyPageCount-1,page+1))} disabled={facultyPage>=facultyPageCount-1} style={{ padding:"6px 10px", border:"1px solid #e3e1ed", borderRadius:7, background:facultyPage>=facultyPageCount-1?"#f8f8fb":"#fff", color:facultyPage>=facultyPageCount-1?"#aaa":P, fontSize:11, cursor:facultyPage>=facultyPageCount-1?"not-allowed":"pointer" }}>Next</button>
+        </div>
+      </div>}
     </div>
   );
 }
