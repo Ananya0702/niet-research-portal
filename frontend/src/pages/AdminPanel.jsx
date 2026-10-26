@@ -1507,6 +1507,12 @@ function ExportView({ faculty, schools, depts, P, showMsg, setActiveView }) {
 
 // ═══ FACULTY DETAILS VIEW ═══
 function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, setFdSearch, fdRoleFilter, setFdRoleFilter, fdDeptFilter, setFdDeptFilter, depts, expandedFac, setExpandedFac, P, fdViewing, setFdViewing }) {
+  const [publicationPage, setPublicationPage] = useState(0);
+  const publicationsPerPage = 5;
+
+  useEffect(() => {
+    setPublicationPage(0);
+  }, [fdViewing?.faculty_id]);
 
   const fdFiltered = facultyDetails.filter(f => {
     if (fdRoleFilter !== "all" && f.role !== fdRoleFilter) return false;
@@ -1520,6 +1526,16 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
 
   if (fdViewing) {
     const f = fdViewing;
+    const publications = f.publications || [];
+    const pageCount = Math.ceil(publications.length / publicationsPerPage);
+    const firstPublication = publicationPage * publicationsPerPage;
+    const visiblePublications = publications.slice(firstPublication, firstPublication + publicationsPerPage);
+
+    const changePublicationPage = (nextPage) => {
+      setPublicationPage(nextPage);
+      requestAnimationFrame(() => document.getElementById("faculty-publications-list")?.scrollIntoView({ behavior:"smooth", block:"start" }));
+    };
+
     return (
       <div>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
@@ -1537,8 +1553,8 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
             <div><span style={{ color:"#888" }}>Citations:</span> <strong>{f.total_citations}</strong></div>
           </div>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          {f.publications.map(p => {
+        <div id="faculty-publications-list" style={{ display:"flex", flexDirection:"column", gap:12, scrollMarginTop:12 }}>
+          {visiblePublications.map(p => {
             const isConf = p.publication_type === "Conference";
             const desc = p.description || "";
             const citData = p.citations_by_year || [];
@@ -1589,8 +1605,20 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
               </div>
             );
           })}
-          {f.publications.length === 0 && <div style={{ textAlign:"center", padding:40, color:"#aaa" }}>No publications found for this faculty member</div>}
+          {publications.length === 0 && <div style={{ textAlign:"center", padding:40, color:"#aaa" }}>No publications found for this faculty member</div>}
         </div>
+        {pageCount > 1 && (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap", marginTop:16, padding:"12px 14px", background:"#fff", border:"1px solid #eee", borderRadius:10 }}>
+            <span style={{ fontSize:12, color:"#666" }}>
+              Showing {firstPublication + 1}–{Math.min(firstPublication + publicationsPerPage, publications.length)} of {publications.length} publications
+            </span>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <button type="button" disabled={publicationPage === 0} onClick={() => changePublicationPage(publicationPage - 1)} style={{ padding:"7px 12px", border:"1px solid #ddd", borderRadius:7, background:publicationPage === 0 ? "#f6f6f6" : "#fff", color:publicationPage === 0 ? "#aaa" : "#333", cursor:publicationPage === 0 ? "not-allowed" : "pointer" }}>Previous</button>
+              <span aria-live="polite" style={{ minWidth:76, textAlign:"center", fontSize:12, color:"#555" }}>Page {publicationPage + 1} of {pageCount}</span>
+              <button type="button" disabled={publicationPage >= pageCount - 1} onClick={() => changePublicationPage(publicationPage + 1)} style={{ padding:"7px 12px", border:"1px solid #ddd", borderRadius:7, background:publicationPage >= pageCount - 1 ? "#f6f6f6" : P, color:publicationPage >= pageCount - 1 ? "#aaa" : "#fff", cursor:publicationPage >= pageCount - 1 ? "not-allowed" : "pointer" }}>Next</button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
