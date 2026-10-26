@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Faculty, Publication, CitationYearly, FacultyResearchArea, Achievement, Project, Patent
+from app.models import Faculty, Publication, CitationYearly, FacultyResearchArea, Achievement, Project, Patent, PatentFaculty
 from app.dependencies import get_current_faculty
 from pydantic import BaseModel
 from typing import Optional
@@ -156,9 +156,9 @@ def get_faculty_dashboard(faculty_id: int,
         Project.faculty_id == faculty_id
     ).all()
 
-    patents = db.query(Patent).filter(
-        Patent.faculty_id == faculty_id
-    ).all()
+    patents = db.query(Patent).outerjoin(PatentFaculty).filter(
+        (Patent.faculty_id == faculty_id) | (PatentFaculty.faculty_id == faculty_id)
+    ).distinct().all()
 
     return {
         "faculty": {

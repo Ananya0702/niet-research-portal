@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, Date, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Boolean, Text, Date, DateTime, Enum, ForeignKey, JSON
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -102,6 +102,7 @@ class Faculty(Base):
     achievements   = relationship("Achievement", back_populates="faculty")
     projects       = relationship("Project", back_populates="faculty")
     patents        = relationship("Patent", back_populates="faculty")
+    patent_links   = relationship("PatentFaculty", back_populates="faculty", cascade="all, delete-orphan")
     education      = relationship("FacultyEducation", back_populates="faculty",
                                   cascade="all, delete-orphan")
     experience     = relationship("FacultyExperience", back_populates="faculty",
@@ -253,8 +254,17 @@ class Patent(Base):
     year = Column(Integer)
 
     publication_date = Column(Date)
+    extra_data = Column(JSON, nullable=True)
 
     faculty = relationship("Faculty", back_populates="patents")
+    faculty_links = relationship("PatentFaculty", back_populates="patent", cascade="all, delete-orphan")
+
+class PatentFaculty(Base):
+    __tablename__ = "patent_faculty"
+    patent_id = Column(Integer, ForeignKey("patents.patent_id", ondelete="CASCADE"), primary_key=True)
+    faculty_id = Column(Integer, ForeignKey("faculty.faculty_id", ondelete="CASCADE"), primary_key=True)
+    patent = relationship("Patent", back_populates="faculty_links")
+    faculty = relationship("Faculty", back_populates="patent_links")
 
 class FacultyEducation(Base):
     __tablename__ = "faculty_education"

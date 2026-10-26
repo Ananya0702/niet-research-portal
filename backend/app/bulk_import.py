@@ -636,6 +636,8 @@ def _import_faculty(db, rows, mode, actor, dry_run):
                         )
                         db.add(fac)
                         db.flush()
+                        from app.patent_links import link_saved_patents_to_new_faculty
+                        link_saved_patents_to_new_faculty(db, fac)
                         temp_passwords[item["row"]] = {"email": d["email"], "password": d["temp_password"]}
                         results["inserted"] += 1
                     else:

@@ -52,6 +52,7 @@ ADD_MIGRATIONS = [
     ("achievements", "description",       "TEXT"),
     ("achievements", "achievement_date",  "DATE"),
     ("achievements", "certificate_url",   "VARCHAR(500)"),
+    ("patents", "extra_data", "JSON"),
     ("announcement_reads", "admin_id",     "INTEGER"),
     ("announcements_v2", "created_by_admin_id", "INTEGER"),
     ("announcements_v2", "updated_by",     "INTEGER"),
@@ -64,6 +65,17 @@ ADD_MIGRATIONS = [
 
 # (ddl) — idempotent CREATE TABLE IF NOT EXISTS for new tables.
 CREATE_MIGRATIONS = [
+    (
+        "patent_faculty",
+        """CREATE TABLE IF NOT EXISTS patent_faculty (
+            patent_id INT NOT NULL,
+            faculty_id INT NOT NULL,
+            PRIMARY KEY (patent_id, faculty_id),
+            INDEX idx_pf_faculty (faculty_id),
+            CONSTRAINT fk_pf_patent FOREIGN KEY (patent_id) REFERENCES patents(patent_id) ON DELETE CASCADE,
+            CONSTRAINT fk_pf_faculty FOREIGN KEY (faculty_id) REFERENCES faculty(faculty_id) ON DELETE CASCADE
+        )""",
+    ),
     (
         "security_audit_logs",
         """CREATE TABLE IF NOT EXISTS security_audit_logs (

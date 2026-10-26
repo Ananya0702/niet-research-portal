@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.database import get_db, Base
 from app.models import Faculty, Department, School, Publication, CitationYearly, Project, Patent, SecurityAuditLog
+from app.patent_links import link_saved_patents_to_new_faculty
 from app.security import get_password_hash, verify_password, create_access_token, decode_token
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response
@@ -323,12 +324,15 @@ def create_faculty(data: FacultyCreate, db: Session = Depends(get_db),
         total_citations   = 0,
     )
     db.add(faculty)
+    db.flush()
+    linked_patents = link_saved_patents_to_new_faculty(db, faculty)
     db.commit()
     db.refresh(faculty)
     return {
         "message":    "Faculty created successfully",
         "faculty_id": faculty.faculty_id,
         "email":      faculty.email,
+        "linked_patents": linked_patents,
     }
 
 @router.put("/faculty/{faculty_id}")

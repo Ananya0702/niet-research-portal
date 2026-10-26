@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Faculty, Publication, Project, Patent, Achievement, Department, School
+from app.models import Faculty, Publication, Project, Patent, PatentFaculty, Achievement, Department, School
 from app.routers.auth import get_current_faculty
 from collections import defaultdict
 from datetime import datetime
@@ -144,9 +144,9 @@ def get_hod_dashboard(source: str = "all",
     ]
 
     # Patents count
-    patents_count = db.query(Patent).filter(
-        Patent.faculty_id.in_(faculty_ids)
-    ).count()
+    patents_count = db.query(Patent).outerjoin(PatentFaculty).filter(
+        (Patent.faculty_id.in_(faculty_ids)) | (PatentFaculty.faculty_id.in_(faculty_ids))
+    ).distinct().count()
 
     # PhD faculty count
     phd_count = len([f for f in all_faculty if f.is_phd])

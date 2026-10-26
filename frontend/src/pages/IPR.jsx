@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import API from "../services/api";
+import * as XLSX from "xlsx";
 
 const EMPTY = {
   title: "",
@@ -65,6 +66,13 @@ export default function IPR() {
   const [saving,  setSaving]  = useState(false);
   const [search,  setSearch]  = useState("");
   const [filterType, setFilterType] = useState("All");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState([]);
+  const [importIssues, setImportIssues] = useState([]);
+  const [importWarnings, setImportWarnings] = useState([]);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importSummary, setImportSummary] = useState("");
+  const canImport = ["hod", "dean_rd"].includes(localStorage.getItem("role"));
 
   const fetchData = () => {
     API.get("/patents/")
@@ -101,6 +109,37 @@ export default function IPR() {
     }
   };
 
+  const readImportFile = async (file) => {
+    if (!file) return;
+    setImportSummary(""); setImportIssues([]); setImportWarnings([]); setImportRows([]);
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+      if (!rows.length) throw new Error("The first worksheet has no data rows.");
+      setImportRows(rows);
+      setImportBusy(true);
+      const result = await API.post("/patents/import/preview", { rows });
+      setImportIssues(result.data.issues || []);
+      setImportWarnings(result.data.warnings || []);
+      setImportSummary(`${result.data.valid} of ${result.data.total} rows are ready to import.`);
+    } catch (err) {
+      setImportSummary(err.response?.data?.detail?.message || err.message || "Could not read this spreadsheet.");
+    } finally { setImportBusy(false); }
+  };
+
+  const commitImport = async () => {
+    setImportBusy(true);
+    try {
+      const result = await API.post("/patents/import", { rows: importRows });
+      setImportSummary(result.data.message); setImportRows([]); setImportIssues([]); setImportWarnings([]); fetchData();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setImportSummary(detail?.message || "Import failed.");
+      setImportIssues(detail?.issues || []);
+    } finally { setImportBusy(false); }
+  };
+
   // Filter logic
   const filtered = items.filter(item => {
     const matchSearch =
@@ -135,11 +174,17 @@ export default function IPR() {
             Patents, Designs, Copyrights & Trademarks · {items.length} total
           </div>
         </div>
+        <div style={{ display: "flex", gap: 8 }}>
+        {canImport && <button onClick={() => { setImportOpen(true); setImportSummary(""); }} style={{
+          background: "#fff", color: "#534AB7", padding: "9px 16px",
+          borderRadius: 8, fontSize: 13, fontWeight: 500, border: "1px solid #c8c3f5", cursor: "pointer",
+        }}>Import Patents</button>}
         <button onClick={() => setModal(true)} style={{
           background: "#534AB7", color: "#fff", padding: "9px 18px",
           borderRadius: 8, fontSize: 13, fontWeight: 500, border: "none",
           cursor: "pointer",
         }}>+ Add IPR</button>
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
@@ -225,7 +270,7 @@ export default function IPR() {
         {loading ? <div className="spinner" /> : (
           <div style={{
             background: "#fff", borderRadius: 12,
-            border: "1px solid #eee", overflow: "hidden",
+            border: "1px solid #eee", overflow: "auto",
           }}>
             {filtered.length === 0 ? (
               <div style={{
@@ -241,7 +286,7 @@ export default function IPR() {
                   <tr style={{ background: "#f9f9f9" }}>
                     {["Title","Dept / School","Type","Scope",
                       "Patent No.","Pub. No.","Status",
-                      "Filing","Publication","Grant",""].map(h => (
+                      "Filing","Publication","Grant","Source fields",""].map(h => (
                       <th key={h} style={{
                         padding: "10px 12px", fontSize: 11, color: "#888",
                         textAlign: "left", borderBottom: "1px solid #eee",
@@ -311,12 +356,22 @@ export default function IPR() {
                           color: p.grant_date ? "#27500A" : "#aaa",
                           fontWeight: p.grant_date ? 500 : 400,
                         }}>{p.grant_date || "—"}</td>
+                        <td style={{ padding: "8px 12px", minWidth: 130 }}>
+                          {p.extra_data && Object.keys(p.extra_data).length > 0 ? (
+                            <details>
+                              <summary style={{ cursor: "pointer", color: "#534AB7", fontSize: 11 }}>View {Object.keys(p.extra_data).filter(key => !key.startsWith("_")).length} fields</summary>
+                              <div style={{ position: "absolute", zIndex: 2, background: "white", border: "1px solid #ddd", borderRadius: 8, padding: 10, maxWidth: 360, maxHeight: 240, overflow: "auto", boxShadow: "0 8px 24px #0002" }}>
+                                {Object.entries(p.extra_data).filter(([key]) => !key.startsWith("_")).map(([key, value]) => <div key={key} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, padding: "4px 0", borderBottom: "1px solid #f2f2f2", fontSize: 11 }}><b>{key}</b><span>{String(value ?? "—")}</span></div>)}
+                              </div>
+                            </details>
+                          ) : <span style={{ color: "#aaa" }}>—</span>}
+                        </td>
                         <td style={{ padding: "10px 12px" }}>
-                          <button onClick={() => handleDelete(p.patent_id)} style={{
+                          {localStorage.getItem("role") === "faculty" && String(p.faculty_id) === localStorage.getItem("faculty_id") && <button onClick={() => handleDelete(p.patent_id)} style={{
                             fontSize: 11, color: "#A32D2D", background: "#FCEBEB",
                             padding: "3px 10px", borderRadius: 5, border: "none",
                             cursor: "pointer",
-                          }}>Delete</button>
+                          }}>Delete</button>}
                         </td>
                       </tr>
                     );
@@ -327,6 +382,33 @@ export default function IPR() {
           </div>
         )}
       </div>
+
+      {importOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(18,16,35,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110 }}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: 24, width: 680, maxWidth: "94vw", maxHeight: "86vh", overflowY: "auto", boxShadow: "0 20px 60px #17142a35" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <strong style={{ fontSize: 18 }}>Import patent spreadsheet</strong>
+              <button onClick={() => setImportOpen(false)} style={{ border: 0, background: "none", fontSize: 24, cursor: "pointer", color: "#777" }}>×</button>
+            </div>
+            <p style={{ color: "#6e6a7a", fontSize: 13, lineHeight: 1.55, marginTop: 0 }}>
+              Choose an Excel or CSV file. The importer reads the first worksheet, matches each inventor to faculty in your assigned scope, and stores all spreadsheet columns—including future columns—with the patent.
+            </p>
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={e => readImportFile(e.target.files?.[0])} style={{ display: "block", width: "100%", padding: 14, border: "1px dashed #bcb7da", borderRadius: 10, background: "#faf9ff", boxSizing: "border-box" }} />
+            {importSummary && <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: importIssues.length ? "#fff6e8" : "#f1f0ff", color: "#39324f", fontSize: 13 }}>{importSummary}</div>}
+            {importRows.length > 0 && <div style={{ marginTop: 10, color: "#777", fontSize: 12 }}>{importRows.length} rows · {Object.keys(importRows[0]).length} columns detected</div>}
+            {importIssues.length > 0 && <div style={{ marginTop: 10, maxHeight: 220, overflow: "auto", border: "1px solid #f1d7aa", borderRadius: 8 }}>
+              {importIssues.map(issue => <div key={issue.row} style={{ padding: "9px 12px", borderBottom: "1px solid #f5ead8", fontSize: 12 }}><b>Row {issue.row}:</b> {issue.errors.join(" · ")}</div>)}
+            </div>}
+            {importWarnings.length > 0 && <div style={{ marginTop: 10, maxHeight: 150, overflow: "auto", border: "1px solid #f1d7aa", borderRadius: 8, background: "#fffaf1" }}>
+              {importWarnings.map((item, i) => <div key={`${item.row}-${i}`} style={{ padding: "8px 12px", borderBottom: "1px solid #f5ead8", fontSize: 12, color: "#73541f" }}><b>Row {item.row}:</b> {item.warnings.join(" · ")}</div>)}
+            </div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 18 }}>
+              <button onClick={() => setImportOpen(false)} style={{ padding: "9px 16px", border: "1px solid #ddd", borderRadius: 8, background: "white", cursor: "pointer" }}>Close</button>
+              <button disabled={importBusy || !importRows.length || importIssues.length > 0} onClick={commitImport} style={{ padding: "9px 18px", border: 0, borderRadius: 8, background: importBusy || !importRows.length || importIssues.length ? "#aaa" : "#534AB7", color: "white", fontWeight: 600, cursor: "pointer" }}>{importBusy ? "Checking…" : "Import valid rows"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Modal */}
       {modal && (
