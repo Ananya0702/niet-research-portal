@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
-import API, { BASE_URL } from "../services/api";
+import API, { BASE_URL, runSyncJob } from "../services/api";
 
 const P = "#5B3DF5";
 
@@ -397,8 +397,11 @@ export default function Profile() {
     setBusy("scholar");
     setScholarResult(null);
     try {
-      const res = await API.post("/sync/scholar");
-      setScholarResult(res.data);
+      const result = await runSyncJob(
+        () => API.post("/sync/scholar"),
+        () => API.get("/sync/google_scholar/status"),
+      );
+      setScholarResult(result);
       showMsg("success", "Sync complete");
       await fetchProfile();
       API.get("/publications/", { params: { limit: 5 } })

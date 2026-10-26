@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -251,8 +251,9 @@ def faculty_platform_status(faculty_id: int, db: Session = Depends(get_db),
     }
 
 
-@router.post("/faculty/sync/{faculty_id}/{platform}")
+@router.post("/faculty/sync/{faculty_id}/{platform}", status_code=202)
 def admin_force_sync(faculty_id: int, platform: str,
+                     background_tasks: BackgroundTasks,
                      db: Session = Depends(get_db),
                      current=Depends(get_current_admin)):
     """Admin-triggered sync for a faculty member on a given platform."""
@@ -262,23 +263,8 @@ def admin_force_sync(faculty_id: int, platform: str,
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty not found")
 
-    from app.routers.sync import _do_sync, ProviderError
-    id_field = {
-        "google_scholar": "google_scholar_id",
-        "orcid": "orcid_id",
-        "scopus": "scopus_author_id",
-    }[platform]
-    account_id = getattr(faculty, id_field, None)
-    if not account_id:
-        raise HTTPException(status_code=400, detail=f"No {platform} ID set for this faculty")
-
-    try:
-        result = _do_sync(platform, faculty, db)
-        return result
-    except ProviderError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    from app.routers.sync import schedule_admin_sync
+    return schedule_admin_sync(faculty_id, platform, db, background_tasks)
 
 
 @router.get("/faculty/sync-status/{faculty_id}")
@@ -287,6 +273,7 @@ def faculty_sync_status(faculty_id: int, db: Session = Depends(get_db),
     faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
     if not faculty:
         raise HTTPException(status_code=404, detail="Not found")
+    from app.routers.sync import sync_status
     return {
         "faculty_id": faculty.faculty_id,
         "scholar_sync_status": faculty.scholar_sync_status,
@@ -295,6 +282,9 @@ def faculty_sync_status(faculty_id: int, db: Session = Depends(get_db),
         "last_scholar_sync":   faculty.last_scholar_sync.isoformat() if faculty.last_scholar_sync else None,
         "last_orcid_sync":     faculty.last_orcid_sync.isoformat() if faculty.last_orcid_sync else None,
         "last_scopus_sync":    faculty.last_scopus_sync.isoformat() if faculty.last_scopus_sync else None,
+        "google_scholar_job": sync_status.get(f"{faculty_id}:google_scholar", {"status": faculty.scholar_sync_status or "idle"}),
+        "orcid_job": sync_status.get(f"{faculty_id}:orcid", {"status": faculty.orcid_sync_status or "idle"}),
+        "scopus_job": sync_status.get(f"{faculty_id}:scopus", {"status": faculty.scopus_sync_status or "idle"}),
     }
 
 

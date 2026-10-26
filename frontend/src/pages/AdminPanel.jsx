@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import API from "../services/api";
+import API, { runSyncJob } from "../services/api";
 import * as XLSX from "xlsx";
 import ImportWizard from "../components/ImportWizard";
 
@@ -157,7 +157,29 @@ export default function AdminPanel() {
   const handleDeactivate = async (id,name) => { if (!window.confirm(`Deactivate ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}`); showMsg("success",`${name} deactivated`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const handleDelete = async (id,name) => { if (!window.confirm(`Permanently delete ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}?hard=true`); showMsg("success",`${name} deleted`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const [syncing, setSyncing] = useState(null);
-  const handleAdminSync = async (id) => { setSyncing(id); try { const res = await apiPost(`/admin/faculty/sync/${id}/orcid`); showMsg("success", `ORCID sync done: ${res.data.new_publications} new, ${res.data.already_existed} existing`); fetchFaculty(); } catch(err) { showMsg("error", err.response?.data?.detail||"Sync failed"); } finally { setSyncing(null); } };
+  const handleAdminSync = async (id) => {
+    if (syncing === id) return;
+    const selectedFaculty = faculty.find(person => person.faculty_id === id);
+    if (!selectedFaculty?.google_scholar_id) {
+      showMsg("error", "Add a Google Scholar ID to this faculty account before syncing.");
+      return;
+    }
+    setSyncing(id);
+    try {
+      const result = await runSyncJob(
+        () => apiPost(`/admin/faculty/sync/${id}/google_scholar`),
+        () => apiGet(`/admin/faculty/sync-status/${id}`),
+        data => data.google_scholar_job,
+      );
+      showMsg("success", `Google Scholar sync complete: ${result.new_publications} new, ${result.already_existed} already in the portal.`);
+      fetchFaculty();
+      fetchFacultyDetails();
+    } catch (err) {
+      showMsg("error", err.response?.data?.detail || "Google Scholar sync failed. Please try again.");
+    } finally {
+      setSyncing(null);
+    }
+  };
 
   // ── Schools CRUD ──
   const handleCreateSchool = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/schools", schoolForm); showMsg("success","✅ School created"); setSchoolModal(false); setSchoolForm({school_name:""}); fetchSchools(); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
@@ -1752,9 +1774,9 @@ function FacultyView({ faculty, loading, filteredFaculty, roleFilter, setRoleFil
                       ? <span onClick={()=>handleDeactivate(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #633806",color:"#633806",fontSize:11,cursor:"pointer" }}>⏸</span>
                       : <span onClick={()=>handleDelete(f.faculty_id,f.name)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #A32D2D",color:"#A32D2D",fontSize:11,cursor:"pointer" }}>🗑</span>
                     }
-                    <span onClick={()=>handleAdminSync(f.faculty_id)} style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #0C447C",color:"#0C447C",fontSize:10,cursor:"pointer", whiteSpace:"nowrap" }}>
-                      {syncing===f.faculty_id ? "⏳ Syncing..." : "🔄 Sync"}
-                    </span>
+                    <button type="button" onClick={()=>handleAdminSync(f.faculty_id)} disabled={syncing===f.faculty_id} title="Sync publications and metrics from this faculty member’s Google Scholar profile" style={{ padding:"3px 8px",borderRadius:5,border:"1px solid #0C447C",color:syncing===f.faculty_id?"#888":"#0C447C",background:"#fff",fontSize:10,cursor:syncing===f.faculty_id?"wait":"pointer",whiteSpace:"nowrap",opacity:syncing===f.faculty_id?0.7:1 }}>
+                      {syncing===f.faculty_id ? "⏳ Syncing Scholar..." : "🔄 Scholar Sync"}
+                    </button>
                   </div>
                 </td>
               </tr>

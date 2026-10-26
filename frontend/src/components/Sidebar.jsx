@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import API from "../services/api";
+import API, { runSyncJob } from "../services/api";
 
 const CAT_ICONS = {
   "Research Funding": "💰", "Conference": "🎤", "Journal": "📄", "Patent / IPR": "💡",
@@ -168,8 +168,10 @@ export default function Sidebar() {
     if (syncing) return;
     setSyncing(true);
     try {
-      const res = await API.post("/sync/scholar");
-      const data = res.data;
+      const data = await runSyncJob(
+        () => API.post("/sync/scholar"),
+        () => API.get("/sync/google_scholar/status"),
+      );
       alert(`✅ Sync complete!\n\n📄 New publications added: ${data.new_publications}\n📋 Already existed (skipped): ${data.already_existed}\n📈 h-index: ${data.h_index}\n💬 Total citations: ${data.total_citations}`);
       window.location.reload();
     } catch (err) {

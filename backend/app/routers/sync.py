@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models import Faculty, Publication, PublicationSource, CitationYearly
 from app.dependencies import get_current_faculty
 from app.providers import get_provider, ProviderError
@@ -34,16 +34,18 @@ PLATFORM_NAMES = {
 
 def _check_status(faculty_id: str, platform: str):
     status_key = f"{faculty_id}:{platform}"
-    if sync_status.get(status_key) == "running":
+    state = sync_status.get(status_key)
+    if state == "running" or (isinstance(state, dict) and state.get("status") == "running"):
         raise HTTPException(status_code=400, detail="Sync already in progress. Please wait...")
 
 
-@router.post("/scholar")
+@router.post("/scholar", status_code=202)
 def sync_google_scholar(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current=Depends(get_current_faculty)
 ):
-    return _run_sync("google_scholar", db, current)
+    return _schedule_sync("google_scholar", db, current, background_tasks)
 
 
 @router.post("/{platform}")
@@ -54,19 +56,23 @@ def sync_platform(
 ):
     if platform not in SUPPORTED_PLATFORMS:
         raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+    # Preserve the existing synchronous flow for ORCID and Scopus.
     return _run_sync(platform, db, current)
 
 
 @router.get("/{platform}/status")
-def get_sync_status(platform: str, current=Depends(get_current_faculty)):
+def get_sync_status(platform: str, db: Session = Depends(get_db), current=Depends(get_current_faculty)):
     if platform not in SUPPORTED_PLATFORMS:
         raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
-    status = sync_status.get(f"{_current_user_id(current)}:{platform}", "idle")
-    return {"status": status}
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == _current_user_id(current)).first()
+    state = sync_status.get(f"{_current_user_id(current)}:{platform}")
+    if isinstance(state, dict):
+        return state
+    return {"status": getattr(faculty, f"{platform}_sync_status", "idle") if faculty else "idle"}
 
 
-def _run_sync(platform: str, db: Session, current: dict):
-    """Shared handler used by both /sync/scholar and /sync/{platform}."""
+def _schedule_sync(platform: str, db: Session, current: dict, background_tasks: BackgroundTasks):
+    """Start one shared asynchronous sync job for any dashboard entry point."""
     faculty_id = _current_user_id(current)
     faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
     if not faculty:
@@ -83,17 +89,73 @@ def _run_sync(platform: str, db: Session, current: dict):
     _check_status(faculty_id, platform)
 
     status_key = f"{faculty_id}:{platform}"
-    sync_status[status_key] = "running"
+    sync_status[status_key] = {"status": "running", "message": f"{PLATFORM_NAMES[platform]} sync started"}
+    setattr(faculty, f"{platform}_sync_status", "running")
+    db.commit()
+    background_tasks.add_task(_run_background_sync, faculty_id, platform)
+    return {"status": "running", "message": f"{PLATFORM_NAMES[platform]} sync started"}
+
+
+def _run_sync(platform: str, db: Session, current: dict):
+    """Synchronous flow retained for ORCID and Scopus profile actions."""
+    faculty_id = _current_user_id(current)
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not faculty:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    account_id = getattr(faculty, PLATFORM_ID_FIELD[platform], None)
+    if not account_id:
+        raise HTTPException(status_code=400, detail=f"No {PLATFORM_NAMES[platform]} ID set")
+    _check_status(faculty_id, platform)
+    status_key = f"{faculty_id}:{platform}"
+    sync_status[status_key] = {"status": "running"}
     try:
         result = _do_sync(platform, faculty, db)
-        sync_status[status_key] = "done"
+        sync_status[status_key] = {"status": "done", "result": result}
         return result
     except ProviderError as e:
-        sync_status[status_key] = "error"
+        sync_status[status_key] = {"status": "error", "error": str(e)}
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        sync_status[status_key] = "error"
+        sync_status[status_key] = {"status": "error", "error": str(e)}
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def schedule_admin_sync(faculty_id: int, platform: str, db: Session, background_tasks: BackgroundTasks):
+    """Shared scheduling entry point used by the Admin faculty table."""
+    faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+    if not faculty:
+        raise HTTPException(status_code=404, detail="Faculty not found")
+    id_field = PLATFORM_ID_FIELD.get(platform)
+    if not id_field:
+        raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+    if not getattr(faculty, id_field, None):
+        raise HTTPException(status_code=400, detail=f"No {PLATFORM_NAMES[platform]} ID set for this faculty")
+    _check_status(faculty_id, platform)
+    sync_status[f"{faculty_id}:{platform}"] = {"status": "running", "message": f"{PLATFORM_NAMES[platform]} sync started"}
+    setattr(faculty, f"{platform}_sync_status", "running")
+    db.commit()
+    background_tasks.add_task(_run_background_sync, faculty_id, platform)
+    return {"status": "running", "message": f"{PLATFORM_NAMES[platform]} sync started"}
+
+
+def _run_background_sync(faculty_id: int, platform: str):
+    status_key = f"{faculty_id}:{platform}"
+    db = SessionLocal()
+    try:
+        faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+        if not faculty:
+            raise ValueError("Faculty not found")
+        result = _do_sync(platform, faculty, db)
+        sync_status[status_key] = {"status": "done", "result": result}
+    except Exception as e:
+        db.rollback()
+        faculty = db.query(Faculty).filter(Faculty.faculty_id == faculty_id).first()
+        if faculty:
+            setattr(faculty, f"{platform}_sync_status", "error")
+            db.commit()
+        sync_status[status_key] = {"status": "error", "error": str(e)}
+    finally:
+        db.close()
 
 
 def _do_sync(platform: str, faculty, db: Session) -> dict:

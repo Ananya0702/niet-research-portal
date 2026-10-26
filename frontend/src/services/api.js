@@ -8,6 +8,24 @@ const API = axios.create({
   baseURL: BASE_URL,
 });
 
+export async function runSyncJob(startRequest, statusRequest, selectJob = (data) => data) {
+  const startResponse = await startRequest();
+  let job = selectJob(startResponse.data) || startResponse.data;
+  if (job.status === "error") throw new Error(job.error || "Sync failed.");
+  if (job.status === "done") return job.result || job;
+  if (job.status !== "running") return job.result || job;
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 5 * 60 * 1000) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const statusResponse = await statusRequest();
+    job = selectJob(statusResponse.data) || statusResponse.data;
+    if (job.status === "done") return job.result || job;
+    if (job.status === "error") throw new Error(job.error || "Google Scholar sync failed.");
+  }
+  throw new Error("Sync is still running. Please wait and refresh the page to check for updated data.");
+}
+
 API.interceptors.request.use((config) => {
   if (config.headers.Authorization) return config;
   const token = localStorage.getItem("token");
