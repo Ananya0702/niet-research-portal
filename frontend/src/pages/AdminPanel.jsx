@@ -8,22 +8,45 @@ const SIDEBAR = "#1A1626";
 
 const SIDEBAR_ACTIVE = "rgba(91,61,245,0.15)";
 
+const ADMIN_NAV_ICONS = {
+  dashboard: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
+  school: <><path d="m3 9 9-5 9 5" /><path d="M5 10v8m4-8v8m10-8v8M3 20h18M2 22h20" /></>,
+  departments: <><path d="M4 21V7l8-4 8 4v14" /><path d="M2 21h20M8 10h2m4 0h2m-8 4h2m4 0h2m-5 7v-4h4v4" /></>,
+  faculty: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20z" /><path d="M16 5.2a3.5 3.5 0 0 1 0 6.6m2 3a5 5 0 0 1 3.5 4.7V20h-4" /></>,
+  details: <><rect x="5" y="3.5" width="14" height="18" rx="2" /><path d="M9 3.5v-1h6v1M8.5 9h7m-7 4h7m-7 4h4" /></>,
+  security: <><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z" /><path d="m9 12 2 2 4-4" /></>,
+  export: <><path d="M12 3v12m-4-4 4 4 4-4" /><path d="M5 15v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" /></>,
+};
+
+function AdminNavIcon({ name, active }) {
+  const isAdd = name.startsWith("add-");
+  const baseName = isAdd ? name.slice(4) : name;
+  const color = active ? "#c4b5fd" : "#a89acb";
+
+  return (
+    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display:"block", flexShrink:0 }}>
+      {ADMIN_NAV_ICONS[baseName]}
+      {isAdd && <g><circle cx="18" cy="18" r="5.2" fill={SIDEBAR} stroke={color} strokeWidth="1.4" /><path d="M18 15.5v5m-2.5-2.5h5" stroke={color} strokeWidth="1.7" /></g>}
+    </svg>
+  );
+}
+
 const SIDEBAR_ITEMS = [
   { section: "Navigation", items: [
-    { key: "overview",    icon: "📊", label: "Dashboard Overview" },
-    { key: "schools",     icon: "🏛", label: "Schools" },
-    { key: "depts",       icon: "🏫", label: "Departments" },
-    { key: "faculty",     icon: "👥", label: "Faculty" },
-    { key: "faculty-details", icon: "📋", label: "Faculty Details" },
+    { key: "overview",    icon: "dashboard", label: "Dashboard Overview" },
+    { key: "schools",     icon: "school", label: "Schools" },
+    { key: "depts",       icon: "departments", label: "Departments" },
+    { key: "faculty",     icon: "faculty", label: "Faculty" },
+    { key: "faculty-details", icon: "details", label: "Faculty Details" },
   ]},
   { section: "Management", items: [
-    { key: "add-school", icon: "➕", label: "Add School" },
-    { key: "add-dept",   icon: "➕", label: "Add Department" },
-    { key: "add-faculty",icon: "➕", label: "Add Faculty" },
+    { key: "add-school", icon: "add-school", label: "Add School" },
+    { key: "add-dept",   icon: "add-departments", label: "Add Department" },
+    { key: "add-faculty",icon: "add-faculty", label: "Add Faculty" },
   ]},
   { section: "System", items: [
-    { key: "security",   icon: "🔐", label: "Security" },
-    { key: "export",    icon: "📥", label: "Export Data" },
+    { key: "security",   icon: "security", label: "Security" },
+    { key: "export",    icon: "export", label: "Export Data" },
   ]},
 ];
 
@@ -248,7 +271,7 @@ export default function AdminPanel() {
                     color: isActive ? "#fff" : "rgba(255,255,255,0.55)",
                     transition:"all 0.15s",
                   }}>
-                    <span style={{ fontSize:16, width:20, textAlign:"center" }}>{item.icon}</span>
+                    <AdminNavIcon name={item.icon} active={isActive} />
                     <span>{item.label}</span>
                   </div>
                 );
