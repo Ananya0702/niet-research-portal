@@ -1560,16 +1560,26 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
                   <p style={{ fontSize:11, color:"#555", lineHeight:1.6, margin:"6px 0 8px", whiteSpace:"pre-wrap" }}>{desc}</p>
                 )}
                 {citData.length > 0 && (
-                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:40, marginTop:6 }}>
-                    {citData.map(c => {
-                      const h = ((c.count||0) / maxCit) * 100;
-                      return (
-                        <div key={c.year} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:1 }}>
-                          <div style={{ width:"100%", borderRadius:"2px 2px 0 0", background:P, height:`${Math.max(h,3)}%`, minHeight:3, opacity:0.5+(h/100)*0.5 }} />
-                          <span style={{ fontSize:8, color:"#aaa" }}>{String(c.year).slice(2)}</span>
-                        </div>
-                      );
-                    })}
+                  <div style={{ marginTop:12, padding:"12px 14px", background:"#fafaff", border:"1px solid #e8e7f5", borderRadius:10 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:8 }}>
+                      <span style={{ fontSize:11, fontWeight:600, color:"#333" }}>Citations by year</span>
+                      <span style={{ fontSize:10, color:"#666" }}>Publication total: <strong style={{ color:P }}>{p.citations_count || 0}</strong></span>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"flex-end", gap:10, overflowX:"auto", padding:"4px 2px 2px" }}>
+                      {citData.map(c => {
+                        const count = Number(c.count) || 0;
+                        const barHeight = (count / maxCit) * 100;
+                        return (
+                          <div key={c.year} aria-label={`${c.year}: ${count} citations`} style={{ flex:"0 0 48px", display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
+                            <span style={{ fontSize:12, lineHeight:1.2, fontWeight:700, color:"#312e81" }}>{count}</span>
+                            <div style={{ width:28, height:68, display:"flex", alignItems:"flex-end", background:"#eeedfb", borderRadius:5, overflow:"hidden" }}>
+                              <div style={{ width:"100%", height:`${barHeight}%`, minHeight:count > 0 ? 5 : 2, background:`linear-gradient(180deg, #7c6af2 0%, ${P} 100%)`, borderRadius:"4px 4px 0 0" }} />
+                            </div>
+                            <span style={{ fontSize:11, lineHeight:1.2, fontWeight:600, color:"#444" }}>{c.year}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 <div style={{ fontSize:10, color:"#aaa", marginTop:4, display:"flex", gap:12 }}>
