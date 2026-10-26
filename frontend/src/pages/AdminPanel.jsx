@@ -1510,7 +1510,7 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
   const [publicationPage, setPublicationPage] = useState(0);
   const [facultyPage, setFacultyPage] = useState(0);
   const publicationsPerPage = 5;
-  const facultiesPerPage = 5;
+  const facultiesPerPage = 10;
 
   useEffect(() => {
     setPublicationPage(0);
