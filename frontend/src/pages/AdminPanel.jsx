@@ -36,6 +36,8 @@ export default function AdminPanel() {
   const [loginForm, setLoginForm] = useState({ email:"", password:"" });
   const [loginShowPw, setLoginShowPw] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [loginSuccess, setLoginSuccess] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeView, setActiveView] = useState("overview");
 
@@ -93,9 +95,27 @@ export default function AdminPanel() {
 
   // ── Login ──
   const handleAdminLogin = async (e) => {
-    e.preventDefault(); setLoginError("");
-    try { const res = await API.post("/admin/login", loginForm); const t=res.data.access_token; localStorage.setItem("admin_token",t); setAdminToken(t); }
-    catch { setLoginError("Invalid admin credentials"); }
+    e.preventDefault();
+    setLoginError("");
+    setLoginSuccess("");
+    setLoginLoading(true);
+    try {
+      const res = await API.post("/admin/login", loginForm);
+      const token = res.data.access_token;
+      setLoginSuccess("Login successful. Opening the Admin Panel…");
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      localStorage.setItem("admin_token", token);
+      setAdminToken(token);
+      showMsg("success", "✅ Admin login successful.");
+    } catch (error) {
+      if (error.response?.status === 401) {
+        setLoginError("Invalid credentials. Check the admin email and password for the connected database; the demo password may have been changed.");
+      } else {
+        setLoginError(error.response?.data?.detail || "Could not reach the login service. Please try again.");
+      }
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   // ── Data fetching ──
@@ -166,7 +186,8 @@ export default function AdminPanel() {
           <div style={{ fontSize:24, fontWeight:700, color:"#fff" }}>Welcome back</div>
           <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)", marginTop:4 }}>Sign in to the Admin Panel</div>
         </div>
-        {loginError&&<div style={{ background:"rgba(249,80,80,0.16)",color:"#ffd6d6",border:"1px solid rgba(255,150,150,0.3)",padding:"10px 14px",borderRadius:10,fontSize:13,marginBottom:18 }}>{loginError}</div>}
+        {loginError&&<div role="alert" aria-live="polite" style={{ background:"rgba(249,80,80,0.16)",color:"#ffd6d6",border:"1px solid rgba(255,150,150,0.3)",padding:"10px 14px",borderRadius:10,fontSize:13,marginBottom:18 }}>{loginError}</div>}
+        {loginSuccess&&<div role="status" aria-live="polite" style={{ background:"rgba(60,180,100,0.18)",color:"#d9ffe5",border:"1px solid rgba(140,255,170,0.35)",padding:"10px 14px",borderRadius:10,fontSize:13,marginBottom:18 }}>{loginSuccess}</div>}
         <form onSubmit={handleAdminLogin}>
           <div style={{ marginBottom:16 }}>
             <label style={{ fontSize:13, fontWeight:500, color:"rgba(255,255,255,0.85)", display:"block", marginBottom:7 }}>Admin Email</label>
@@ -179,7 +200,7 @@ export default function AdminPanel() {
               <button type="button" onClick={()=>setLoginShowPw(s=>!s)} tabIndex={-1} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", fontSize:16, cursor:"pointer", padding:0 }}>{loginShowPw ? "🙈" : "👁"}</button>
             </div>
           </div>
-          <button type="submit" style={{ width:"100%", padding:13, border:"none", borderRadius:10, fontSize:15, fontWeight:600, color:"#fff", cursor:"pointer", background:"linear-gradient(135deg, #6a4cf5 0%, #8b5cf6 45%, #3b82f6 100%)", boxShadow:"0 10px 26px rgba(107,78,245,0.4)" }}>Login as Admin</button>
+          <button type="submit" disabled={loginLoading} style={{ width:"100%", padding:13, border:"none", borderRadius:10, fontSize:15, fontWeight:600, color:"#fff", cursor:loginLoading?"wait":"pointer", opacity:loginLoading?0.75:1, background:"linear-gradient(135deg, #6a4cf5 0%, #8b5cf6 45%, #3b82f6 100%)", boxShadow:"0 10px 26px rgba(107,78,245,0.4)" }}>{loginLoading ? "Signing in…" : "Login as Admin"}</button>
         </form>
         <div style={{ marginTop:18, textAlign:"center" }}><a href="/" style={{ fontSize:12.5, color:"#b9aaff", textDecoration:"none", fontWeight:500 }}>← Back to Portal Login</a></div>
       </div>
