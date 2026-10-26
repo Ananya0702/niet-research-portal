@@ -22,6 +22,31 @@ const timeAgo = (d) => {
 };
 const P = "#534AB7";
 
+const SIDE_NAV_ICONS = {
+  dashboard:<><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></>,
+  profile:<><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></>,
+  publications:<><path d="M7 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20V5a1.5 1.5 0 0 1 1-1.5Z"/><path d="M14 4v4h4M9 13h6m-6 3h6"/></>,
+  analytics:<><path d="M4 19.5V5"/><path d="M4 19.5h16"/><path d="m7 15 4-4 3 2 5-6"/><path d="M16 7h3v3"/></>,
+  projects:<><path d="M3.5 8A1.5 1.5 0 0 1 5 6.5h5l2 2h7A1.5 1.5 0 0 1 20.5 10v8A1.5 1.5 0 0 1 19 19.5H5A1.5 1.5 0 0 1 3.5 18Z"/><path d="M3.5 10h17"/></>,
+  ipr:<><path d="M9 18h6m-5 3h4"/><path d="M8.5 14.5a7 7 0 1 1 7 0c-.8.6-1.2 1.2-1.4 2H10c-.2-.8-.7-1.4-1.5-2Z"/><path d="M12 3v1m7 6h1"/></>,
+  achievements:<><path d="M8 4h8v5a4 4 0 0 1-8 0Z"/><path d="M8 6H5v2a4 4 0 0 0 4 4m7-6h3v2a4 4 0 0 1-4 4m-3-1v5m-4 4h8m-7 0 1-4h4l1 4"/></>,
+  collaboration:<><circle cx="9" cy="8" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1Z"/><path d="M16 5.5a3 3 0 0 1 0 5.8m2 3.2a5 5 0 0 1 3 4.5V20h-4"/></>,
+  students:<><path d="m3 8 9-4 9 4-9 4Z"/><path d="M6 10v5c3.5 3 8.5 3 12 0v-5M21 8v6"/></>,
+  reports:<><rect x="5" y="3.5" width="14" height="18" rx="2"/><path d="M9 3.5v-1h6v1M8.5 9h7m-7 4h7m-7 4h4"/></>,
+  activity:<><path d="M4 12a8 8 0 1 1 2.3 5.7"/><path d="M4 17v-4h4m4-6v5l3 2"/></>,
+  announcements:<><path d="M4 14V9a1 1 0 0 1 1-1h3l9-4v14l-9-4H5a1 1 0 0 1-1-1Z"/><path d="m8 14 2 6h3l-2.2-5.1M20 8a6 6 0 0 1 0 7"/></>,
+  settings:<><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.1 1.9-2 2-1.9-1.1-.2-.1a8 8 0 0 1-1.4.6l-.2.1L14.5 21h-3l-.4-2.4-.2-.1a8 8 0 0 1-1.4-.6l-.2.1-1.9 1.1-2-2 1.1-1.9.1-.2a8 8 0 0 1-.6-1.4l-.1-.2L4 13.5v-3l2.4-.4.1-.2a8 8 0 0 1 .6-1.4L7 8.3 5.9 6.4l2-2 1.9 1.1.2.1a8 8 0 0 1 1.4-.6l.2-.1L12 2.5h3l.4 2.4.2.1a8 8 0 0 1 1.4.6l.2-.1 1.9-1.1 2 2L20 8.3l-.1.2a8 8 0 0 1 .6 1.4l.1.2 2.4.4v3l-2.4.4-.1.2a8 8 0 0 1-.6 1.4Z" transform="translate(-1.5 -1.5) scale(.96)"/></>,
+  team:<><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20z"/><path d="M16 5.2a3.5 3.5 0 0 1 0 6.6m2 3a5 5 0 0 1 3.5 4.7V20h-4"/></>,
+  add:<><circle cx="12" cy="12" r="9"/><path d="M12 8v8m-4-4h8"/></>,
+  sync:<><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.5-3"/></>,
+  logout:<><path d="M10 17l5-5-5-5m5 5H3"/><path d="M13 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></>,
+  notifications:<><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>,
+};
+
+function SidebarIcon({ name, active=false, size=18 }) {
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={active?"#ddd6fe":"#a89acb"} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",flexShrink:0}}>{SIDE_NAV_ICONS[name]||SIDE_NAV_ICONS.publications}</svg>;
+}
+
 
 export default function Sidebar() {
   const location = useLocation();
@@ -39,30 +64,30 @@ export default function Sidebar() {
 
   // ── Base nav (all roles) ──────────────────────────────────────────────
   const BASE_NAV = [
-    { icon: "📊", label: "Dashboard",        path: dashPath },
-    { icon: "👤", label: "My Profile",       path: `${prefix}/profile` },
-    { icon: "📄", label: "Publications",     path: "/publications" },
-    { icon: "📈", label: "Analytics",        path: `${prefix}/analytics` },
-    { icon: "💼", label: "Projects",         path: "/projects" },
-    { icon: "💡", label: "IPR",          path: "/patents" },
-    { icon: "🏆", label: "Achievements",     path: "/achievements" },
-    { icon: "🤝", label: "Collaborations",   path: `${prefix}/collaborations` },
-    { icon: "🎓", label: "Student Research", path: `${prefix}/students` },
-    { icon: "📋", label: "Reports",          path: `${prefix}/reports` },
-    { icon: "📝", label: "Activity Log",     path: `${prefix}/activity` },
-    { icon: "📢", label: "Announcements",     path: `${prefix}/announcements` },
-    { icon: "⚙️", label: "Settings",         path: `${prefix}/settings` },
+    { icon: "dashboard", label: "Dashboard",        path: dashPath },
+    { icon: "profile", label: "My Profile",       path: `${prefix}/profile` },
+    { icon: "publications", label: "Publications",     path: "/publications" },
+    { icon: "analytics", label: "Analytics",        path: `${prefix}/analytics` },
+    { icon: "projects", label: "Projects",         path: "/projects" },
+    { icon: "ipr", label: "IPR",          path: "/patents" },
+    { icon: "achievements", label: "Achievements",     path: "/achievements" },
+    { icon: "collaboration", label: "Collaborations",   path: `${prefix}/collaborations` },
+    { icon: "students", label: "Student Research", path: `${prefix}/students` },
+    { icon: "reports", label: "Reports",          path: `${prefix}/reports` },
+    { icon: "activity", label: "Activity Log",     path: `${prefix}/activity` },
+    { icon: "announcements", label: "Announcements",     path: `${prefix}/announcements` },
+    { icon: "settings", label: "Settings",         path: `${prefix}/settings` },
   ];
 
   // ── HOD-only extra nav ────────────────────────────────────────────────
   const HOD_NAV = [
-    { icon: "👥", label: "Faculty & Researchers", path: "/hod/faculty" },
+    { icon: "team", label: "Faculty & Researchers", path: "/hod/faculty" },
   ];
 
   // ── Dean-only extra nav ───────────────────────────────────────────────
   const DEAN_NAV = [
-    { icon: "👤", label: "My Research",       path: "/dean/myresearch" },
-    { icon: "👥", label: "All Faculty",       path: "/dean/faculty" },
+    { icon: "profile", label: "My Research",       path: "/dean/myresearch" },
+    { icon: "team", label: "All Faculty",       path: "/dean/faculty" },
   ];
 
   const EXTRA_NAV =
@@ -72,15 +97,15 @@ export default function Sidebar() {
   // ── Quick actions by role ─────────────────────────────────────────────
   const QUICK_ACTIONS =
     role === "dean_rd" ? [
-      { icon: "📢", label: "Post Announcement", path: "/dean/announcements" },
-      { icon: "📋", label: "View Reports",      path: "/dean/reports" },
+      { icon: "announcements", label: "Post Announcement", path: "/dean/announcements" },
+      { icon: "reports", label: "View Reports",      path: "/dean/reports" },
     ] :
     role === "hod" ? [
-      { icon: "➕", label: "Add Publication",   path: "/publications" },
-      { icon: "👥", label: "View Faculty",      path: "/hod/faculty" },
+      { icon: "add", label: "Add Publication",   path: "/publications" },
+      { icon: "team", label: "View Faculty",      path: "/hod/faculty" },
     ] : [
-      { icon: "➕", label: "Add Publication",   path: "/publications" },
-      { icon: "➕", label: "Add Project",       path: "/projects" },
+      { icon: "add", label: "Add Publication",   path: "/publications" },
+      { icon: "add", label: "Add Project",       path: "/projects" },
     ];
 
   const initials = name.split(" ")
@@ -165,7 +190,7 @@ export default function Sidebar() {
         borderLeft: active ? "3px solid #fff" : "3px solid transparent",
         transition: "all 0.15s",
       }}>
-        <span style={{ fontSize: 14 }}>{item.icon}</span>
+        <SidebarIcon name={item.icon} active={active} />
         <span>{item.label}</span>
       </Link>
     );
@@ -186,11 +211,12 @@ export default function Sidebar() {
         borderBottom: "1px solid rgba(255,255,255,0.1)",
       }}>
         <div style={{
-          width: 40, height: 40, background: "#534AB7", borderRadius: 10,
+          width: 82, height: 48, background: "#fff", borderRadius: 9,
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: 6, boxShadow: "0 0 16px rgba(91,61,245,0.5)",
+          padding: "4px 6px", boxSizing:"border-box", flexShrink:0,
+          boxShadow: "0 3px 12px rgba(0,0,0,0.16)",
         }}>
-          <img src="/niet-logo.svg" alt="NIET" style={{ width:"100%", height:"100%", objectFit:"contain", filter:"brightness(0) invert(1)" }} />
+          <img src="/niet-logo.svg" alt="NIET Greater Noida" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
         </div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#fff",
@@ -209,7 +235,7 @@ export default function Sidebar() {
         background: "rgba(255,255,255,0.04)",
       }}>
         <button onClick={openPanel} style={{ position:"relative", marginRight:4, background:"none", border:"none", cursor:"pointer", padding:4 }}>
-          <span style={{ fontSize:16, color:"rgba(255,255,255,0.7)" }}>🔔</span>
+          <SidebarIcon name="notifications" size={18} />
           {unreadCount > 0 && (
             <span style={{
               position:"absolute", top:-2, right:-4, background:"#A32D2D",
@@ -294,7 +320,7 @@ export default function Sidebar() {
             textDecoration: "none", marginBottom: 4,
             transition: "background 0.15s",
           }}>
-            <span>{item.icon}</span><span>{item.label}</span>
+            <SidebarIcon name={item.icon} size={15} /><span>{item.label}</span>
           </Link>
         ))}
 
@@ -315,7 +341,7 @@ export default function Sidebar() {
             pointerEvents: syncing ? "none" : "auto",
             transition: "background 0.15s",
           }}>
-          <span>{syncing ? "⏳" : "🔄"}</span>
+          {syncing ? <span style={{width:15,textAlign:"center",fontSize:12}}>⏳</span> : <SidebarIcon name="sync" size={15} />}
           <span>{syncing ? "Syncing..." : "Sync Google Scholar"}</span>
         </div>
         
@@ -332,7 +358,7 @@ export default function Sidebar() {
             borderTop: "1px solid rgba(255,255,255,0.06)",
             paddingTop: 8,
           }}>
-          🚪 <span>Logout</span>
+          <SidebarIcon name="logout" size={15} /> <span>Logout</span>
           </div>
         </div>
       </div>
