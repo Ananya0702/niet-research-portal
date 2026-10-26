@@ -1403,6 +1403,12 @@ function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedScho
   const selSchool = schools.find(s=>s.school_id===selSchoolId)||null;
   const selSchoolDepts = selSchool ? depts.filter(d=>d.school_id===selSchool.school_id) : [];
   const selSchoolFaculty = selSchool ? faculty.filter(f=>selSchoolDepts.some(d=>d.dept_id===f.dept_id)) : [];
+  const schoolStats = schools.map(school => {
+    const departments = depts.filter(d=>d.school_id===school.school_id);
+    const departmentIds = new Set(departments.map(d=>d.dept_id));
+    const schoolFaculty = faculty.filter(f=>departmentIds.has(f.dept_id));
+    return { ...school, departments, facultyCount:schoolFaculty.length, dean:schoolFaculty.find(f=>f.role==="dean_rd") };
+  });
   return (
     <div style={{ display:"flex", gap:14 }}>
       <div style={{ width:320, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16, flexShrink:0 }}>
@@ -1478,7 +1484,50 @@ function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedScho
             </table>
           </>
         ) : (
-          <div style={{ padding:40, textAlign:"center", color:"#aaa", fontSize:13 }}>Select a school from the tree to view details</div>
+          <div style={{ padding:"8px 4px 4px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:16, flexWrap:"wrap" }}>
+              <div>
+                <div style={{ fontSize:17, fontWeight:700, color:"#1a1a1a" }}>Schools overview</div>
+                <div style={{ fontSize:11, color:"#888", marginTop:3 }}>Explore school structure and open a school to manage its departments.</div>
+              </div>
+              <button onClick={()=>setSchoolModal(true)} style={{ background:P, color:"#fff", padding:"8px 14px", borderRadius:8, fontSize:11, fontWeight:600, border:"none", cursor:"pointer" }}>+ Add School</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:16 }}>
+              {[
+                { label:"Schools", value:schools.length, color:P, bg:"#EEEDFE" },
+                { label:"Departments", value:depts.length, color:"#085041", bg:"#E1F5EE" },
+                { label:"Faculty members", value:faculty.length, color:"#633806", bg:"#FAEEDA" },
+              ].map(metric=><div key={metric.label} style={{ padding:"12px 14px", borderRadius:11, background:metric.bg }}>
+                <div style={{ fontSize:10, color:"#666" }}>{metric.label}</div>
+                <div style={{ fontSize:21, fontWeight:700, color:metric.color, marginTop:3 }}>{metric.value.toLocaleString()}</div>
+              </div>)}
+            </div>
+            {schoolStats.length ? (
+              <section style={{ border:"1px solid #eeeef4", borderRadius:12, overflow:"hidden" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 14px", background:"#fafafd", borderBottom:"1px solid #eeeef4" }}>
+                  <div style={{ fontSize:12, fontWeight:650, color:"#222" }}>School directory</div>
+                  <span style={{ fontSize:10, color:"#888" }}>Select a school to view details</span>
+                </div>
+                <div style={{ maxHeight:310, overflowY:"auto" }}>
+                  {schoolStats.map((school,index)=><button key={school.school_id} type="button" onClick={()=>{setSelSchoolId(school.school_id);setExpandedSchools({...expandedSchools,[school.school_id]:true});}} style={{ width:"100%", display:"grid", gridTemplateColumns:"minmax(0,1fr) 76px 76px minmax(90px,0.8fr) 18px", alignItems:"center", gap:10, padding:"11px 14px", border:0, borderBottom:index===schoolStats.length-1?0:"1px solid #f0f0f4", background:"#fff", textAlign:"left", cursor:"pointer" }}>
+                    <span style={{ display:"flex", alignItems:"center", gap:9, minWidth:0 }}>
+                      <span style={{ width:30, height:30, borderRadius:8, background:"#EEEDFE", color:P, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>⌂</span>
+                      <span style={{ minWidth:0 }}>
+                        <span style={{ display:"block", fontSize:11, fontWeight:600, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{school.school_name}</span>
+                        <span style={{ display:"block", fontSize:9, color:"#888", marginTop:2 }}>{school.dean ? `Dean: ${school.dean.name}` : "Dean not assigned"}</span>
+                      </span>
+                    </span>
+                    <span style={{ textAlign:"right" }}><strong style={{ display:"block", fontSize:12, color:"#333" }}>{school.departments.length}</strong><span style={{ fontSize:9, color:"#888" }}>departments</span></span>
+                    <span style={{ textAlign:"right" }}><strong style={{ display:"block", fontSize:12, color:P }}>{school.facultyCount}</strong><span style={{ fontSize:9, color:"#888" }}>faculty</span></span>
+                    <span style={{ height:5, background:"#f0eff7", borderRadius:5, overflow:"hidden" }}><span style={{ display:"block", width:`${faculty.length ? Math.max(school.facultyCount/faculty.length*100,2) : 0}%`, height:"100%", background:P, borderRadius:5 }} /></span>
+                    <span style={{ color:P, fontSize:16 }}>›</span>
+                  </button>)}
+                </div>
+              </section>
+            ) : (
+              <div style={{ padding:"32px 12px", textAlign:"center", border:"1px dashed #ddd9f4", borderRadius:12, color:"#888", fontSize:12 }}>No schools yet. Add a school to start organizing the institution.</div>
+            )}
+          </div>
         )}
       </div>
     </div>
