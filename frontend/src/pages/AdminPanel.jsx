@@ -1409,8 +1409,14 @@ function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedScho
     const schoolFaculty = faculty.filter(f=>departmentIds.has(f.dept_id));
     return { ...school, departments, facultyCount:schoolFaculty.length, dean:schoolFaculty.find(f=>f.role==="dean_rd") };
   });
+  const facultyScale = Math.max(...schoolStats.map(school=>school.facultyCount), 1);
+  const departmentActivity = (selSchool ? selSchoolDepts : depts)
+    .map(department => ({ ...department, schoolName:schools.find(s=>s.school_id===department.school_id)?.school_name, facultyCount:faculty.filter(person=>person.dept_id===department.dept_id).length }))
+    .sort((a,b)=>b.facultyCount-a.facultyCount || a.dept_name.localeCompare(b.dept_name))
+    .slice(0,6);
   return (
-    <div style={{ display:"flex", gap:14 }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ display:"flex", gap:14, alignItems:"stretch" }}>
       <div style={{ width:320, background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:16, flexShrink:0 }}>
         <div style={{ fontSize:13, fontWeight:600, color:"#1a1a1a", marginBottom:12 }}>Schools Management</div>
         <div style={{ borderLeft:"2px solid #e8e8ee", marginLeft:8, paddingLeft:12 }}>
@@ -1529,6 +1535,44 @@ function SchoolsView({ schools, depts, faculty, expandedSchools, setExpandedScho
             )}
           </div>
         )}
+      </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:14 }}>
+        <section style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:"16px 18px", minWidth:0 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:13 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:650, color:"#222" }}>Faculty across schools</div>
+              <div style={{ fontSize:10, color:"#888", marginTop:3 }}>Compare faculty distribution by school</div>
+            </div>
+            <span style={{ fontSize:10, color:"#777", background:"#f7f6ff", borderRadius:20, padding:"5px 9px" }}>{faculty.length} total</span>
+          </div>
+          {schoolStats.length ? <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
+            {schoolStats.map(school=><div key={school.school_id} style={{ display:"grid", gridTemplateColumns:"minmax(90px, 0.8fr) minmax(70px, 1fr) 28px", alignItems:"center", gap:10 }}>
+              <span title={school.school_name} style={{ fontSize:10, color:"#555", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{school.school_name}</span>
+              <span style={{ height:7, background:"#f0eff7", borderRadius:8, overflow:"hidden" }}><span style={{ display:"block", width:`${school.facultyCount/facultyScale*100}%`, height:"100%", minWidth:school.facultyCount?4:0, background:`linear-gradient(90deg, #8b7cf6 0%, ${P} 100%)`, borderRadius:8 }} /></span>
+              <strong style={{ textAlign:"right", fontSize:11, color:P }}>{school.facultyCount}</strong>
+            </div>)}
+          </div> : <div style={{ padding:"22px 8px", textAlign:"center", fontSize:11, color:"#999" }}>Add schools to compare faculty distribution.</div>}
+        </section>
+        <section style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:"16px 18px", minWidth:0 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:13 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:650, color:"#222" }}>Department breakdown</div>
+              <div style={{ fontSize:10, color:"#888", marginTop:3 }}>{selSchool ? selSchool.school_name : "Top departments across all schools"}</div>
+            </div>
+            <span style={{ fontSize:10, color:"#777" }}>{selSchool ? selSchoolDepts.length : depts.length} departments</span>
+          </div>
+          {departmentActivity.length ? <div style={{ display:"flex", flexDirection:"column" }}>
+            {departmentActivity.map((department,index)=><div key={department.dept_id} style={{ display:"flex", alignItems:"center", gap:9, padding:"8px 0", borderTop:index?"1px solid #f3f3f6":"none" }}>
+              <span style={{ width:25, height:25, borderRadius:7, background:"#EEEDFE", color:P, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, flexShrink:0 }}>{index+1}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:10, fontWeight:600, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{department.dept_name}</div>
+                <div style={{ fontSize:9, color:"#999", marginTop:2 }}>{department.schoolName || "School not assigned"}</div>
+              </div>
+              <strong style={{ fontSize:11, color:P, whiteSpace:"nowrap" }}>{department.facultyCount} faculty</strong>
+            </div>)}
+          </div> : <div style={{ padding:"22px 8px", textAlign:"center", fontSize:11, color:"#999" }}>{selSchool ? "No departments in this school yet." : "Add departments to see the breakdown."}</div>}
+        </section>
       </div>
     </div>
   );
