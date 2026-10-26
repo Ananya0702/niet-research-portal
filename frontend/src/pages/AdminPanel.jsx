@@ -455,38 +455,41 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
   const [selSchool,setSelSchool]=useState("");
   const deptOptions=selSchool?depts.filter(d=>d.school_id===parseInt(selSchool)):depts;
   return (
-    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100 }}>
-      <div style={{ background:"#fff",borderRadius:14,padding:"24px 28px",width:540,maxHeight:"90vh",overflowY:"auto" }}>
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
-          <span style={{ fontSize:16,fontWeight:600 }}>Create New Faculty Account</span>
-          <span style={{ cursor:"pointer",color:"#888",fontSize:22 }} onClick={()=>setModal(false)}>×</span>
+    <div onClick={e=>{if(e.target===e.currentTarget&&!saving)setModal(false);}} style={{ position:"fixed",inset:0,background:"rgba(20,16,35,0.52)",backdropFilter:"blur(3px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16 }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="create-faculty-title" style={{ background:"#fff",borderRadius:18,padding:"24px 28px 22px",width:"min(600px, 100%)",maxHeight:"calc(100vh - 32px)",overflowY:"auto",boxShadow:"0 24px 70px rgba(24,16,58,0.24)",border:"1px solid rgba(255,255,255,0.8)" }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:14,marginBottom:20 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+            <span aria-hidden="true" style={{ width:42,height:42,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,color:P,background:"#EEEDFE" }}>♙</span>
+            <div><div id="create-faculty-title" style={{ fontSize:18,fontWeight:700,color:"#211b35" }}>Create Faculty Account</div><div style={{ fontSize:11,color:"#858091",marginTop:4 }}>Set up the faculty member’s account and profile.</div></div>
+          </div>
+          <button type="button" aria-label="Close dialog" onClick={()=>!saving&&setModal(false)} disabled={saving} style={{ width:30,height:30,border:0,borderRadius:8,background:"#f6f5f9",color:"#777",fontSize:20,lineHeight:1,cursor:saving?"not-allowed":"pointer" }}>×</button>
         </div>
         <form onSubmit={handleCreate}>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-            <div><label style={lbl}>Full Name *</label><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={inp} placeholder="Dr. First Last" /></div>
-            <div><label style={lbl}>Email *</label><input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} style={inp} placeholder="name@niet.co.in" /></div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:13 }}>
+            <div><label htmlFor="faculty-name" style={{...lbl,fontWeight:600,color:"#383346"}}>Full name <span style={{color:"#A32D2D"}}>*</span></label><input id="faculty-name" required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="Dr. First Last" /></div>
+            <div><label htmlFor="faculty-email" style={{...lbl,fontWeight:600,color:"#383346"}}>Email <span style={{color:"#A32D2D"}}>*</span></label><input id="faculty-email" type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="name@niet.co.in" /></div>
           </div>
-          <div style={{ marginBottom:14 }}><label style={lbl}>Password *</label><input type="password" required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} style={inp} placeholder="Min 6 characters" /></div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-            <div><label style={lbl}>Role *</label><select required value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={inp}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
-            <div><label style={lbl}>Designation *</label><select required value={form.designation} onChange={e=>setForm({...form,designation:e.target.value})} style={inp}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></div>
+          <div style={{ marginBottom:13 }}><label htmlFor="faculty-password" style={{...lbl,fontWeight:600,color:"#383346"}}>Temporary password <span style={{color:"#A32D2D"}}>*</span></label><input id="faculty-password" type="password" required minLength={6} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="At least 6 characters" /><div style={{fontSize:10,color:"#918d9c",marginTop:5}}>Share this securely with the faculty member.</div></div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:13 }}>
+            <div><label htmlFor="faculty-role" style={{...lbl,fontWeight:600,color:"#383346"}}>Role <span style={{color:"#A32D2D"}}>*</span></label><select id="faculty-role" required value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={{...inp,background:"#fcfcfe"}}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
+            <div><label htmlFor="faculty-designation" style={{...lbl,fontWeight:600,color:"#383346"}}>Designation <span style={{color:"#A32D2D"}}>*</span></label><select id="faculty-designation" required value={form.designation} onChange={e=>setForm({...form,designation:e.target.value})} style={{...inp,background:"#fcfcfe"}}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></div>
           </div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-            <div><label style={lbl}>School</label><select value={selSchool} onChange={e=>{setSelSchool(e.target.value);setForm({...form,dept_id:""})}} style={inp}><option value="">Select School</option>{schools.map(s=><option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}</select></div>
-            <div><label style={lbl}>Department</label><select value={form.dept_id} onChange={e=>setForm({...form,dept_id:e.target.value})} disabled={!selSchool} style={{...inp,background:!selSchool?"#f5f5f5":"#fff"}}><option value="">Select Department</option>{deptOptions.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}</select></div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:13 }}>
+            <div><label htmlFor="faculty-school" style={{...lbl,fontWeight:600,color:"#383346"}}>School</label><select id="faculty-school" value={selSchool} onChange={e=>{setSelSchool(e.target.value);setForm({...form,dept_id:""})}} style={{...inp,background:"#fcfcfe"}}><option value="">Select School</option>{schools.map(s=><option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}</select></div>
+            <div><label htmlFor="faculty-department" style={{...lbl,fontWeight:600,color:"#383346"}}>Department</label><select id="faculty-department" value={form.dept_id} onChange={e=>setForm({...form,dept_id:e.target.value})} disabled={!selSchool} style={{...inp,background:!selSchool?"#f5f5f7":"#fcfcfe",opacity:!selSchool?0.7:1}}><option value="">{selSchool?"Select Department":"Select a school first"}</option>{deptOptions.map(d=><option key={d.dept_id} value={d.dept_id}>{d.dept_name}</option>)}</select></div>
           </div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-            <div><label style={lbl}>PhD Holder</label><select value={form.is_phd} onChange={e=>setForm({...form,is_phd:e.target.value==="true"})} style={inp}><option value="false">No</option><option value="true">Yes</option></select></div>
-            <div><label style={lbl}>Joining Year</label><input type="number" value={form.joining_year} onChange={e=>setForm({...form,joining_year:e.target.value})} style={inp} min="1990" max="2030" /></div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:13 }}>
+            <div><label htmlFor="faculty-phd" style={{...lbl,fontWeight:600,color:"#383346"}}>PhD holder</label><select id="faculty-phd" value={form.is_phd} onChange={e=>setForm({...form,is_phd:e.target.value==="true"})} style={{...inp,background:"#fcfcfe"}}><option value="false">No</option><option value="true">Yes</option></select></div>
+            <div><label htmlFor="faculty-joining-year" style={{...lbl,fontWeight:600,color:"#383346"}}>Joining year</label><input id="faculty-joining-year" type="number" value={form.joining_year} onChange={e=>setForm({...form,joining_year:e.target.value})} style={{...inp,background:"#fcfcfe"}} min="1990" max={new Date().getFullYear()} /></div>
           </div>
-          <div style={{ marginBottom:14 }}><label style={lbl}>Google Scholar ID</label><input value={form.google_scholar_id} onChange={e=>setForm({...form,google_scholar_id:e.target.value})} style={inp} placeholder="e.g. 8XXy5vkAAAAJ" /></div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-            <div><label style={lbl}>ORCID iD</label><input value={form.orcid_id} onChange={e=>setForm({...form,orcid_id:e.target.value})} style={inp} placeholder="e.g. 0000-0001-2345-6789" /></div>
-            <div><label style={lbl}>Scopus Author ID</label><input value={form.scopus_author_id} onChange={e=>setForm({...form,scopus_author_id:e.target.value})} style={inp} placeholder="e.g. 7005103581" /></div>
+          <div style={{ marginBottom:13 }}><label htmlFor="faculty-scholar-id" style={{...lbl,fontWeight:600,color:"#383346"}}>Google Scholar ID <span style={{fontSize:10,fontWeight:400,color:"#918d9c"}}>(optional)</span></label><input id="faculty-scholar-id" value={form.google_scholar_id} onChange={e=>setForm({...form,google_scholar_id:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="e.g. 8XXy5vkAAAAJ" /></div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:20 }}>
+            <div><label htmlFor="faculty-orcid" style={{...lbl,fontWeight:600,color:"#383346"}}>ORCID iD <span style={{fontSize:10,fontWeight:400,color:"#918d9c"}}>(optional)</span></label><input id="faculty-orcid" value={form.orcid_id} onChange={e=>setForm({...form,orcid_id:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="0000-0001-2345-6789" /></div>
+            <div><label htmlFor="faculty-scopus" style={{...lbl,fontWeight:600,color:"#383346"}}>Scopus Author ID <span style={{fontSize:10,fontWeight:400,color:"#918d9c"}}>(optional)</span></label><input id="faculty-scopus" value={form.scopus_author_id} onChange={e=>setForm({...form,scopus_author_id:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="e.g. 7005103581" /></div>
           </div>
           <div style={{ display:"flex",gap:10 }}>
-            <button type="button" onClick={()=>setModal(false)} style={{ flex:1,padding:10,border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",cursor:"pointer" }}>Cancel</button>
-            <button type="submit" disabled={saving} style={{ flex:2,padding:10,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Creating...":"Create Faculty Account"}</button>
+            <button type="button" onClick={()=>setModal(false)} disabled={saving} style={{ flex:1,padding:"11px 14px",border:"1px solid #dedce8",borderRadius:10,fontSize:12,fontWeight:600,color:"#514d5c",background:"#fff",cursor:saving?"not-allowed":"pointer" }}>Cancel</button>
+            <button type="submit" disabled={saving} style={{ flex:1.5,padding:"11px 14px",background:saving?"#8876f7":P,color:"#fff",borderRadius:10,fontSize:12,fontWeight:650,border:"none",boxShadow:"0 5px 12px rgba(91,61,245,0.2)",cursor:saving?"wait":"pointer" }}>{saving?"Creating account…":"Create Faculty Account"}</button>
           </div>
         </form>
       </div>
@@ -1795,32 +1798,33 @@ function ExportView({ faculty, schools, depts, P, showMsg, setActiveView }) {
       URL.revokeObjectURL(url);
       showMsg("success", `✅ ${filename} downloaded`);
     } catch { showMsg("error", "Export failed"); }
-    setActiveView("overview");
   };
 
   return (
-    <div style={{ maxWidth:600, margin:"0 auto" }}>
-      <div style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:"30px 28px", textAlign:"center" }}>
-        <div style={{ fontSize:40, marginBottom:12 }}>📥</div>
-        <div style={{ fontSize:18, fontWeight:600, color:"#1a1a1a", marginBottom:6 }}>Export Data</div>
-        <div style={{ fontSize:12, color:"#888", marginBottom:24 }}>Download system data as CSV files</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          {[
-            { label:"Export Faculty List", icon:"👥", type:"faculty", desc:"All faculty, HODs, and Deans with roles and departments" },
-            { label:"Export Departments", icon:"🏫", type:"depts", desc:"All departments with school assignments" },
-            { label:"Export Schools", icon:"🏛", type:"schools", desc:"All schools with department counts" },
-          ].map(item=>(
-            <div key={item.type} onClick={()=>handleExport(item.type)} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", borderRadius:12, background:"#f8f8fb", cursor:"pointer", border:"1px solid #f0f0f5", transition:"background 0.15s" }}>
-              <span style={{ fontSize:24 }}>{item.icon}</span>
-              <div style={{ flex:1, textAlign:"left" }}>
-                <div style={{ fontSize:13, fontWeight:600, color:"#1a1a1a" }}>{item.label}</div>
-                <div style={{ fontSize:11, color:"#888" }}>{item.desc}</div>
-              </div>
-              <span style={{ fontSize:12, color:P, fontWeight:600 }}>Download →</span>
-            </div>
-          ))}
-        </div>
-        <button onClick={()=>setActiveView("overview")} style={{ marginTop:18, padding:"8px 24px", background:"#f0f0f5", color:"#666", border:"none", borderRadius:8, fontSize:12, cursor:"pointer" }}>Back to Dashboard</button>
+    <div style={{ maxWidth:1120, margin:"0 auto" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:14,marginBottom:18,flexWrap:"wrap" }}>
+        <div><div style={{ fontSize:20,fontWeight:700,color:"#211b35" }}>Export data</div><div style={{ fontSize:12,color:"#858091",marginTop:4 }}>Download portal records as CSV files for reporting and backups.</div></div>
+        <span style={{ padding:"7px 11px",borderRadius:20,background:"#EEEDFE",color:P,fontSize:10,fontWeight:600 }}>CSV · UTF-8</span>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:16 }}>
+        {[["Faculty",faculty.length,"#EEEDFE",P],["Departments",depts.length,"#E6F1FB","#0C447C"],["Schools",schools.length,"#E1F5EE","#085041"]].map(([label,value,bg,color])=><div key={label} style={{ background:"#fff",border:"1px solid #f0f0f5",borderRadius:13,padding:"13px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.03)" }}><span style={{fontSize:11,color:"#777"}}>{label} available</span><strong style={{fontSize:20,color}}>{value.toLocaleString()}</strong></div>)}
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14 }}>
+        {[
+          { label:"Faculty list", icon:"👥", type:"faculty", count:faculty.length, desc:"Names, emails, roles, departments, designations, and account status", tint:"#EEEDFE", color:P },
+          { label:"Departments", icon:"🏫", type:"depts", count:depts.length, desc:"Department codes, school assignments, and HOD information", tint:"#E6F1FB", color:"#0C447C" },
+          { label:"Schools", icon:"🏛", type:"schools", count:schools.length, desc:"School names and department totals", tint:"#E1F5EE", color:"#085041" },
+        ].map(item=>(
+          <button key={item.type} type="button" onClick={()=>handleExport(item.type)} style={{ display:"flex",flexDirection:"column",alignItems:"stretch",gap:18,padding:18,borderRadius:14,background:"#fff",cursor:"pointer",border:"1px solid #eeedf4",boxShadow:"0 2px 8px rgba(26,22,38,0.04)",textAlign:"left",transition:"transform .15s, box-shadow .15s" }}>
+            <span style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}><span style={{ width:42,height:42,borderRadius:12,background:item.tint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{item.icon}</span><span style={{fontSize:10,color:"#858091",background:"#f7f6fa",padding:"5px 8px",borderRadius:12}}>{item.count.toLocaleString()} records</span></span>
+            <span><span style={{ display:"block",fontSize:14,fontWeight:700,color:"#252136" }}>Export {item.label}</span><span style={{ display:"block",fontSize:11,lineHeight:1.5,color:"#858091",marginTop:5 }}>{item.desc}</span></span>
+            <span style={{ display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid #f0eff5",paddingTop:12,fontSize:11,fontWeight:650,color:item.color }}>Download CSV <span aria-hidden="true">↓</span></span>
+          </button>
+        ))}
+      </div>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginTop:18,padding:"12px 14px",borderRadius:10,background:"#f8f7fb",flexWrap:"wrap" }}>
+        <span style={{fontSize:10,color:"#858091"}}>Each export downloads immediately. You can download multiple files without leaving this page.</span>
+        <button onClick={()=>setActiveView("overview")} style={{ padding:"8px 14px",background:"#fff",color:"#5f5a6b",border:"1px solid #e7e5ee",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer" }}>Back to Dashboard</button>
       </div>
     </div>
   );
@@ -2196,8 +2200,8 @@ function SecurityView({ apiGet, apiPost, P, showMsg }) {
       {/* Audit logs */}
       <div style={cardStyle}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
-          <span style={{ fontSize:13, fontWeight:600 }}>Security Audit Log</span>
-          <div style={{ display:"flex", gap:6 }}>
+          <div><span style={{ fontSize:13, fontWeight:600 }}>Security Audit Log</span><div style={{fontSize:10,color:"#888",marginTop:3}}>{logs.length} recent events</div></div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {[["all","All"],["login","Logins"],["otp","OTP"],["password","Passwords"]].map(([key,label]) => (
               <button key={key} onClick={() => setLogScope(key)} style={{
                 padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:500, cursor:"pointer",
@@ -2210,31 +2214,31 @@ function SecurityView({ apiGet, apiPost, P, showMsg }) {
         {logs.length === 0 ? (
           <div style={{ fontSize:12, color:"#999", padding:"20px", textAlign:"center" }}>No security events recorded yet.</div>
         ) : (
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+          <div style={{ overflowX:"auto",border:"1px solid #f0f0f5",borderRadius:10 }}><table style={{ width:"100%",minWidth:1050,borderCollapse:"collapse",fontSize:12,tableLayout:"fixed" }}>
             <thead>
               <tr style={{ background:"#f8f8fb" }}>
                 {["Time","Faculty","Action","Status","Method","Detail","Browser","IP"].map(h => (
-                  <th key={h} style={{ padding:"8px 10px", fontSize:10, color:"#888", textAlign:"left", borderBottom:"1px solid #eee", fontWeight:500 }}>{h}</th>
+                  <th key={h} style={{ padding:"10px 11px", fontSize:10, color:"#777",textTransform:"uppercase",letterSpacing:"0.04em",textAlign:"left", borderBottom:"1px solid #eee", fontWeight:650,whiteSpace:"nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {logs.map(r => (
-                <tr key={r.log_id} style={{ borderBottom:"1px solid #f5f5f5" }}>
-                  <td style={{ padding:"8px 10px", color:"#888", fontSize:11, whiteSpace:"nowrap" }}>{new Date(r.created_at).toLocaleString()}</td>
-                  <td style={{ padding:"8px 10px", fontWeight:500 }}>{r.faculty_name}</td>
-                  <td style={{ padding:"8px 10px", fontWeight:500 }}>{r.action}</td>
-                  <td style={{ padding:"8px 10px" }}>
-                    <span style={{ fontSize:10, padding:"2px 8px", borderRadius:6, background: r.status==="success" ? "#EAF3DE" : "#FCEBEB", color: r.status==="success" ? "#27500A" : "#791F1F", fontWeight:500 }}>{r.status}</span>
+              {logs.map((r,index) => (
+                <tr key={r.log_id} style={{ borderBottom:index===logs.length-1?0:"1px solid #f0eff5",background:index%2?"#fcfcfe":"#fff" }}>
+                  <td style={{ width:155,padding:"11px", color:"#777", fontSize:10, whiteSpace:"nowrap" }}>{new Date(r.created_at).toLocaleString()}</td>
+                  <td title={r.faculty_name||"System"} style={{ width:145,padding:"11px",fontWeight:600,color:"#383346",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{r.faculty_name||"System"}</td>
+                  <td style={{ width:120,padding:"11px",fontWeight:600,color:"#4a4655",fontSize:10,wordBreak:"break-word" }}>{r.action}</td>
+                  <td style={{ width:85,padding:"11px" }}>
+                    <span style={{ display:"inline-block",fontSize:9,padding:"4px 8px",borderRadius:10,background: r.status==="success" ? "#EAF3DE" : "#FCEBEB", color: r.status==="success" ? "#27500A" : "#791F1F", fontWeight:650 }}>{r.status}</span>
                   </td>
-                  <td style={{ padding:"8px 10px", color:"#555" }}>{r.method || "—"}</td>
-                  <td style={{ padding:"8px 10px", color:"#555" }}>{r.detail || "—"}</td>
-                  <td style={{ padding:"8px 10px", color:"#888", fontSize:11 }}>{r.device} · {r.browser}</td>
-                  <td style={{ padding:"8px 10px", color:"#888", fontSize:11 }}>{r.ip_address || "—"}</td>
+                  <td style={{ width:75,padding:"11px",color:"#666",fontSize:10 }}>{r.method || "—"}</td>
+                  <td title={r.detail||"—"} style={{ padding:"11px",color:"#555",fontSize:10,whiteSpace:"normal",lineHeight:1.45,overflowWrap:"anywhere" }}>{r.detail || "—"}</td>
+                  <td style={{ width:125,padding:"11px",color:"#777",fontSize:10 }}>{r.device} · {r.browser}</td>
+                  <td style={{ width:110,padding:"11px",color:"#777",fontSize:10,whiteSpace:"nowrap" }}>{r.ip_address || "—"}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
