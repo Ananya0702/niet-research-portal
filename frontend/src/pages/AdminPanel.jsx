@@ -318,7 +318,7 @@ export default function AdminPanel() {
 
           {/* ═══ OVERVIEW ═══ */}
           {activeView==="overview" && !dashboard && <div className="spinner" style={{margin:"40px auto"}} />}
-          {activeView==="overview" && dashboard && <OverviewView {...{dashboard,schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,setModal,handleDeactivate,handleDelete,P,viewFacultyProfile}} />}
+          {activeView==="overview" && dashboard && <OverviewView {...{dashboard,schools,depts,faculty,facultyDetails,facultyDetailsLoading,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,setModal,handleDeactivate,handleDelete,P,viewFacultyProfile}} />}
 
           {/* ═══ SCHOOLS ═══ */}
           {activeView==="schools" && <SchoolsView {...{schools,depts,faculty,expandedSchools,setExpandedSchools,selSchoolId,setSelSchoolId,setSchoolModal,setDeptModal,handleDeleteSchool,handleDeleteDept,setEditModal,setEditForm,P,setImportEntity}} />}
@@ -940,7 +940,7 @@ function FacultyProfileView({ data, loading, onClose, P }) {
 
 // ═══ VIEW COMPONENTS ═══
 
-function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, setExpandedSchools, selSchoolId, setSelSchoolId, setSchoolModal, setDeptModal, handleDeleteSchool, handleDeleteDept, setEditModal, setEditForm, setModal, handleDeactivate, handleDelete, P, viewFacultyProfile }) {
+function OverviewView({ dashboard, schools, depts, faculty, facultyDetails, facultyDetailsLoading, expandedSchools, setExpandedSchools, selSchoolId, setSelSchoolId, setSchoolModal, setDeptModal, handleDeleteSchool, handleDeleteDept, setEditModal, setEditForm, setModal, handleDeactivate, handleDelete, P, viewFacultyProfile }) {
   const [selDeptId, setSelDeptId] = useState(null);
   const [expandedDepts, setExpandedDepts] = useState({});
   const [treeSearch, setTreeSearch] = useState("");
@@ -967,6 +967,24 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
       publication_count:departmentStats.filter(d => schoolDepartmentIds.has(d.dept_id)).reduce((total, d) => total + (d.publications || 0), 0),
     };
   });
+  const allPublications = (facultyDetails || []).flatMap(f => (f.publications || []).map(pub => ({
+    ...pub,
+    faculty_id:f.faculty_id,
+    faculty_name:f.name,
+    dept_name:f.dept_name,
+  })));
+  const publicationCountsByYear = allPublications.reduce((counts, pub) => {
+    if (pub.year) counts[pub.year] = (counts[pub.year] || 0) + 1;
+    return counts;
+  }, {});
+  const publicationYearStats = Object.entries(publicationCountsByYear)
+    .map(([year, count]) => ({ year:Number(year), count }))
+    .sort((a, b) => a.year - b.year)
+    .slice(-6);
+  const maxYearlyPublications = Math.max(...publicationYearStats.map(item => item.count), 1);
+  const recentPublications = [...allPublications]
+    .sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0) || (b.citations_count || 0) - (a.citations_count || 0))
+    .slice(0, 4);
 
   const q = treeSearch.toLowerCase().trim();
   const matchingIds = useMemo(() => {
@@ -1321,6 +1339,62 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
           )}
         </div>
       </div>
+
+      {!selSchool && !selDept && (
+        <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1.05fr) minmax(0, 0.95fr)", gap:14, marginTop:14 }}>
+          <section style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:"16px 18px", minWidth:0 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:12 }}>
+              <div>
+                <div style={{ fontSize:12, fontWeight:650, color:"#222" }}>Publication output by year</div>
+                <div style={{ fontSize:10, color:"#888", marginTop:2 }}>Annual publication records</div>
+              </div>
+              <span style={{ fontSize:10, color:"#777" }}>{allPublications.length.toLocaleString()} total</span>
+            </div>
+            {facultyDetailsLoading ? (
+              <div style={{ height:112, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#999" }}>Loading publication data…</div>
+            ) : publicationYearStats.length === 0 ? (
+              <div style={{ height:112, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#999" }}>No publication year data available.</div>
+            ) : (
+              <div style={{ display:"flex", alignItems:"stretch", gap:12, minHeight:112, overflowX:"auto", padding:"4px 2px 0" }}>
+                {publicationYearStats.map(item => (
+                  <div key={item.year} style={{ flex:"1 0 48px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", gap:5 }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:P }}>{item.count}</span>
+                    <div style={{ width:"min(100%, 42px)", height:68, display:"flex", alignItems:"flex-end", background:"#f0eff8", borderRadius:"6px 6px 3px 3px", overflow:"hidden" }}>
+                      <div style={{ width:"100%", height:`${(item.count / maxYearlyPublications) * 100}%`, minHeight:4, background:`linear-gradient(180deg, #8b7cf6 0%, ${P} 100%)`, borderRadius:"5px 5px 0 0" }} />
+                    </div>
+                    <span style={{ fontSize:10, color:"#555", fontWeight:600 }}>{item.year}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section style={{ background:"#fff", borderRadius:16, boxShadow:"0 1px 4px rgba(0,0,0,0.04)", border:"1px solid #f0f0f5", padding:"16px 18px", minWidth:0 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <div style={{ fontSize:12, fontWeight:650, color:"#222" }}>Recent publications</div>
+              <span style={{ fontSize:10, color:"#888" }}>Latest publication years</span>
+            </div>
+            {facultyDetailsLoading ? (
+              <div style={{ padding:"28px 8px", textAlign:"center", fontSize:11, color:"#999" }}>Loading publication data…</div>
+            ) : recentPublications.length === 0 ? (
+              <div style={{ padding:"28px 8px", textAlign:"center", fontSize:11, color:"#999" }}>No publications to show yet.</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column" }}>
+                {recentPublications.map((pub, index) => (
+                  <button key={pub.pub_id || `${pub.faculty_id}-${index}`} type="button" onClick={() => viewFacultyProfile(pub.faculty_id)} style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"8px 2px", border:0, borderTop:index ? "1px solid #f1f1f5" : "none", background:"transparent", textAlign:"left", cursor:"pointer" }}>
+                    <span style={{ width:28, height:28, borderRadius:8, background:"#EEEDFE", color:P, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, flexShrink:0 }}>{pub.year || "—"}</span>
+                    <span style={{ flex:1, minWidth:0 }}>
+                      <span style={{ display:"block", fontSize:10, fontWeight:600, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{pub.title}</span>
+                      <span style={{ display:"block", fontSize:9, color:"#888", marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{pub.faculty_name} · {pub.dept_name || "Unassigned"}</span>
+                    </span>
+                    <span style={{ fontSize:9, color:"#777", whiteSpace:"nowrap" }}>{pub.citations_count || 0} citations</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }
