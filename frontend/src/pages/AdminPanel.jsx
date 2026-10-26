@@ -951,6 +951,22 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
   const selSchoolDepts = selSchool ? depts.filter(d=>d.school_id===selSchool.school_id) : [];
   const selSchoolFaculty = selSchool ? faculty.filter(f=>selSchoolDepts.some(d=>d.dept_id===f.dept_id)) : [];
   const selDeptFaculty = selDept ? faculty.filter(f=>f.dept_id===selDept.dept_id) : [];
+  const departmentStats = (dashboard.dept_breakdown || []).map(item => {
+    const department = depts.find(d => d.dept_id === item.dept_id);
+    return { ...item, school_name:schools.find(s => s.school_id === department?.school_id)?.school_name || "Unassigned" };
+  }).sort((a, b) => (b.publications || 0) - (a.publications || 0));
+  const topDepartments = departmentStats.slice(0, 5);
+  const maxDepartmentPublications = Math.max(...topDepartments.map(d => d.publications || 0), 1);
+  const schoolStats = schools.map(s => {
+    const schoolDepartments = depts.filter(d => d.school_id === s.school_id);
+    const schoolDepartmentIds = new Set(schoolDepartments.map(d => d.dept_id));
+    return {
+      ...s,
+      department_count:schoolDepartments.length,
+      faculty_count:faculty.filter(f => f.is_active && schoolDepartmentIds.has(f.dept_id)).length,
+      publication_count:departmentStats.filter(d => schoolDepartmentIds.has(d.dept_id)).reduce((total, d) => total + (d.publications || 0), 0),
+    };
+  });
 
   const q = treeSearch.toLowerCase().trim();
   const matchingIds = useMemo(() => {
@@ -1229,9 +1245,78 @@ function OverviewView({ dashboard, schools, depts, faculty, expandedSchools, set
               </table>
             </>
           ) : (
-            <div style={{ padding:40, textAlign:"center", color:"#aaa", fontSize:13 }}>
-              <div style={{ fontSize:36, marginBottom:10 }}>🏛</div>
-              <div>Select a School or Department from the Organization Explorer</div>
+            <div style={{ padding:"8px 4px 4px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:18, flexWrap:"wrap" }}>
+                <div>
+                  <div style={{ fontSize:17, fontWeight:700, color:"#1a1a1a" }}>Institution overview</div>
+                  <div style={{ fontSize:11, color:"#888", marginTop:3 }}>Research activity across NIET. Select a school or department to explore its details.</div>
+                </div>
+                <span style={{ fontSize:10, color:"#777", background:"#f7f6ff", border:"1px solid #eceafd", borderRadius:20, padding:"5px 9px" }}>Updated from current portal data</span>
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10, marginBottom:18 }}>
+                {[
+                  { label:"Publications this year", value:dashboard.kpis.publications_this_year || 0, growth:dashboard.kpis.growth?.publications, color:"#085041", bg:"#E1F5EE" },
+                  { label:"Total citations", value:(dashboard.kpis.total_citations || 0).toLocaleString(), growth:dashboard.kpis.growth?.citations, color:"#633806", bg:"#FAEEDA" },
+                ].map(metric => (
+                  <div key={metric.label} style={{ padding:"14px 16px", borderRadius:12, background:metric.bg, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+                    <div>
+                      <div style={{ fontSize:10, color:"#666" }}>{metric.label}</div>
+                      <div style={{ fontSize:22, fontWeight:700, color:metric.color, marginTop:2 }}>{metric.value}</div>
+                    </div>
+                    <span style={{ fontSize:10, color:metric.growth == null ? "#777" : metric.growth >= 0 ? "#27500A" : "#A32D2D", background:"rgba(255,255,255,0.65)", padding:"5px 8px", borderRadius:8, whiteSpace:"nowrap" }}>
+                      {metric.growth == null ? "Year-over-year unavailable" : `${metric.growth > 0 ? "+" : ""}${metric.growth}% YoY`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1.05fr) minmax(0, 0.95fr)", gap:14 }}>
+                <section style={{ border:"1px solid #eeeef4", borderRadius:12, padding:"14px 16px", minWidth:0 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                    <div style={{ fontSize:12, fontWeight:650, color:"#222" }}>Leading departments</div>
+                    <span style={{ fontSize:10, color:"#888" }}>By publications</span>
+                  </div>
+                  {topDepartments.length === 0 ? (
+                    <div style={{ padding:"24px 8px", textAlign:"center", fontSize:11, color:"#999" }}>Department research data will appear here.</div>
+                  ) : topDepartments.map((department, index) => (
+                    <div key={department.dept_id} style={{ display:"flex", alignItems:"center", gap:9, padding:"9px 0", borderTop:index ? "1px solid #f3f3f6" : "none" }}>
+                      <span style={{ width:22, height:22, borderRadius:7, background:index === 0 ? "#EEEDFE" : "#f5f5f8", color:index === 0 ? P : "#777", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, flexShrink:0 }}>{index + 1}</span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:11, fontWeight:600, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{department.dept_name}</div>
+                        <div style={{ fontSize:9, color:"#999", marginTop:2 }}>{department.school_name} · {department.faculty_count || 0} faculty</div>
+                        <div style={{ height:4, background:"#f0eff7", borderRadius:4, marginTop:5, overflow:"hidden" }}>
+                          <div style={{ width:`${Math.max(((department.publications || 0) / maxDepartmentPublications) * 100, 2)}%`, height:"100%", background:P, borderRadius:4 }} />
+                        </div>
+                      </div>
+                      <strong style={{ fontSize:12, color:P, minWidth:24, textAlign:"right" }}>{department.publications || 0}</strong>
+                    </div>
+                  ))}
+                </section>
+
+                <section style={{ border:"1px solid #eeeef4", borderRadius:12, padding:"14px 16px", minWidth:0 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, gap:8 }}>
+                    <div style={{ fontSize:12, fontWeight:650, color:"#222" }}>Explore schools</div>
+                    <span style={{ fontSize:10, color:"#888" }}>{schoolStats.length} total</span>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:7, maxHeight:270, overflowY:"auto" }}>
+                    {schoolStats.map(school => (
+                      <button key={school.school_id} type="button" onClick={() => { setSelSchoolId(school.school_id); setSelDeptId(null); setExpandedSchools({ ...expandedSchools, [school.school_id]:true }); }} style={{ width:"100%", border:"1px solid #f0f0f4", background:"#fff", borderRadius:9, padding:"9px 10px", display:"flex", alignItems:"center", gap:9, textAlign:"left", cursor:"pointer" }}>
+                        <span style={{ width:30, height:30, borderRadius:8, background:"#EEEDFE", color:P, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>⌂</span>
+                        <span style={{ flex:1, minWidth:0 }}>
+                          <span style={{ display:"block", fontSize:10, fontWeight:600, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{school.school_name}</span>
+                          <span style={{ display:"block", fontSize:9, color:"#888", marginTop:2 }}>{school.department_count} departments · {school.faculty_count} faculty</span>
+                        </span>
+                        <span style={{ textAlign:"right", flexShrink:0 }}>
+                          <strong style={{ display:"block", fontSize:11, color:P }}>{school.publication_count}</strong>
+                          <span style={{ fontSize:8, color:"#999" }}>publications</span>
+                        </span>
+                      </button>
+                    ))}
+                    {schoolStats.length === 0 && <div style={{ padding:"24px 8px", textAlign:"center", fontSize:11, color:"#999" }}>Add a school to start organizing the institution.</div>}
+                  </div>
+                </section>
+              </div>
             </div>
           )}
         </div>
