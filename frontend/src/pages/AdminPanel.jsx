@@ -363,20 +363,27 @@ export default function AdminPanel() {
 
       {/* School Modal */}
       {schoolModal && (
-        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100 }}>
-          <div style={{ background:"#fff",borderRadius:14,padding:"24px 28px",width:400 }}>
-            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
-              <span style={{ fontSize:16,fontWeight:600 }}>Create New School</span>
-              <span style={{ cursor:"pointer",color:"#888",fontSize:22 }} onClick={()=>setSchoolModal(false)}>×</span>
+        <div onClick={e=>{if(e.target===e.currentTarget&&!saving)setSchoolModal(false);}} style={{ position:"fixed",inset:0,background:"rgba(20,16,35,0.52)",backdropFilter:"blur(3px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="create-school-title" style={{ background:"#fff",borderRadius:18,padding:"26px 28px 22px",width:"min(460px, 100%)",boxShadow:"0 24px 70px rgba(24,16,58,0.24)",border:"1px solid rgba(255,255,255,0.8)" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:14,marginBottom:23 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                <span aria-hidden="true" style={{ width:42,height:42,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:P,background:"#EEEDFE" }}>🏛</span>
+                <div>
+                  <div id="create-school-title" style={{ fontSize:18,fontWeight:700,color:"#211b35",letterSpacing:"-0.2px" }}>Create New School</div>
+                  <div style={{ fontSize:11,color:"#858091",marginTop:4 }}>Add a school to your institution structure.</div>
+                </div>
+              </div>
+              <button type="button" aria-label="Close dialog" onClick={()=>!saving&&setSchoolModal(false)} disabled={saving} style={{ width:30,height:30,border:0,borderRadius:8,background:"#f6f5f9",color:"#777",fontSize:20,lineHeight:1,cursor:saving?"not-allowed":"pointer" }}>×</button>
             </div>
-            <form onSubmit={handleCreateSchool}>
-              <div style={{ marginBottom:16 }}>
-                <label style={lbl}>School Name *</label>
-                <input required value={schoolForm.school_name} onChange={e=>setSchoolForm({...schoolForm,school_name:e.target.value})} style={inp} placeholder="e.g. School of CS & IT (SCSIT)" />
+            <form onSubmit={e=>{if(!schoolForm.school_name.trim()){e.preventDefault();showMsg("error","School name is required");return;}setSchoolForm({...schoolForm,school_name:schoolForm.school_name.trim()});handleCreateSchool(e);}}>
+              <div style={{ marginBottom:22 }}>
+                <label htmlFor="new-school-name" style={{ ...lbl,display:"block",fontWeight:600,color:"#383346",marginBottom:7 }}>School name <span style={{ color:"#A32D2D" }}>*</span></label>
+                <input id="new-school-name" required autoFocus value={schoolForm.school_name} onChange={e=>setSchoolForm({...schoolForm,school_name:e.target.value})} style={{ ...inp,width:"100%",boxSizing:"border-box",padding:"12px 14px",borderRadius:10,fontSize:13,border:"1px solid #dedce8",background:"#fcfcfe",outlineColor:P }} placeholder="e.g. School of CS & IT (SCSIT)" />
+                <div style={{ fontSize:10,color:"#918d9c",marginTop:7 }}>Use the official school name so it’s easy to identify across the portal.</div>
               </div>
               <div style={{ display:"flex",gap:10 }}>
-                <button type="button" onClick={()=>setSchoolModal(false)} style={{ flex:1,padding:10,border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",cursor:"pointer" }}>Cancel</button>
-                <button type="submit" disabled={saving} style={{ flex:2,padding:10,background:P,color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Creating...":"Create School"}</button>
+                <button type="button" onClick={()=>setSchoolModal(false)} disabled={saving} style={{ flex:1,padding:"11px 14px",border:"1px solid #dedce8",borderRadius:10,fontSize:12,fontWeight:600,color:"#514d5c",background:"#fff",cursor:saving?"not-allowed":"pointer",opacity:saving?0.6:1 }}>Cancel</button>
+                <button type="submit" disabled={saving} style={{ flex:1.5,padding:"11px 14px",background:saving?"#8876f7":P,color:"#fff",borderRadius:10,fontSize:12,fontWeight:650,border:"none",boxShadow:"0 5px 12px rgba(91,61,245,0.2)",cursor:saving?"wait":"pointer" }}>{saving?"Creating school…":"Create School"}</button>
               </div>
             </form>
           </div>
