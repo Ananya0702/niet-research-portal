@@ -1508,11 +1508,17 @@ function ExportView({ faculty, schools, depts, P, showMsg, setActiveView }) {
 // ═══ FACULTY DETAILS VIEW ═══
 function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, setFdSearch, fdRoleFilter, setFdRoleFilter, fdDeptFilter, setFdDeptFilter, depts, expandedFac, setExpandedFac, P, fdViewing, setFdViewing }) {
   const [publicationPage, setPublicationPage] = useState(0);
+  const [facultyPage, setFacultyPage] = useState(0);
   const publicationsPerPage = 5;
+  const facultiesPerPage = 5;
 
   useEffect(() => {
     setPublicationPage(0);
   }, [fdViewing?.faculty_id]);
+
+  useEffect(() => {
+    setFacultyPage(0);
+  }, [fdSearch, fdRoleFilter, fdDeptFilter]);
 
   const fdFiltered = facultyDetails.filter(f => {
     if (fdRoleFilter !== "all" && f.role !== fdRoleFilter) return false;
@@ -1523,6 +1529,14 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
   });
 
   const toggleFac = (id) => setExpandedFac(p => ({ ...p, [id]: !p[id] }));
+  const facultyPageCount = Math.ceil(fdFiltered.length / facultiesPerPage);
+  const firstFaculty = facultyPage * facultiesPerPage;
+  const visibleFaculty = fdFiltered.slice(firstFaculty, firstFaculty + facultiesPerPage);
+
+  const changeFacultyPage = (nextPage) => {
+    setFacultyPage(nextPage);
+    requestAnimationFrame(() => document.getElementById("faculty-details-list")?.scrollIntoView({ behavior:"smooth", block:"start" }));
+  };
 
   if (fdViewing) {
     const f = fdViewing;
@@ -1647,8 +1661,9 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
       ) : fdFiltered.length === 0 ? (
         <div style={{ textAlign:"center", padding:40, color:"#aaa" }}>No faculty match your filters</div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {fdFiltered.map(f => (
+        <>
+        <div id="faculty-details-list" style={{ display:"flex", flexDirection:"column", gap:8, scrollMarginTop:12 }}>
+          {visibleFaculty.map(f => (
             <div key={f.faculty_id} style={{ background:"#fff", borderRadius:12, border:"1px solid #eee", overflow:"hidden" }}>
               <div onClick={()=>toggleFac(f.faculty_id)} style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", background:expandedFac[f.faculty_id] ? "#f8f8fb" : "#fff" }}>
                 <div style={{ width:36, height:36, borderRadius:"50%", background:P, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:600, flexShrink:0 }}>{f.name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}</div>
@@ -1698,6 +1713,19 @@ function FacultyDetailsView({ facultyDetails, facultyDetailsLoading, fdSearch, s
             </div>
           ))}
         </div>
+      {facultyPageCount > 1 && (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap", marginTop:16, padding:"12px 14px", background:"#fff", border:"1px solid #eee", borderRadius:10 }}>
+          <span style={{ fontSize:12, color:"#666" }}>
+            Showing {firstFaculty + 1}–{Math.min(firstFaculty + facultiesPerPage, fdFiltered.length)} of {fdFiltered.length} faculty
+          </span>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <button type="button" disabled={facultyPage === 0} onClick={() => changeFacultyPage(facultyPage - 1)} style={{ padding:"7px 12px", border:"1px solid #ddd", borderRadius:7, background:facultyPage === 0 ? "#f6f6f6" : "#fff", color:facultyPage === 0 ? "#aaa" : "#333", cursor:facultyPage === 0 ? "not-allowed" : "pointer" }}>Previous</button>
+            <span aria-live="polite" style={{ minWidth:76, textAlign:"center", fontSize:12, color:"#555" }}>Page {facultyPage + 1} of {facultyPageCount}</span>
+            <button type="button" disabled={facultyPage >= facultyPageCount - 1} onClick={() => changeFacultyPage(facultyPage + 1)} style={{ padding:"7px 12px", border:"1px solid #ddd", borderRadius:7, background:facultyPage >= facultyPageCount - 1 ? "#f6f6f6" : P, color:facultyPage >= facultyPageCount - 1 ? "#aaa" : "#fff", cursor:facultyPage >= facultyPageCount - 1 ? "not-allowed" : "pointer" }}>Next</button>
+          </div>
+        </div>
+      )}
+        </>
       )}
     </div>
   );
