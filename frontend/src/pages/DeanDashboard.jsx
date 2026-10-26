@@ -9,31 +9,20 @@ import {
 const Q_COLORS = { Q1:"#0C447C", Q2:"#27500A", Q3:"#BA7517", Q4:"#A32D2D" };
 const D_COLORS = ["#534AB7","#0C447C","#27500A","#BA7517","#A32D2D","#088780","#888780"];
 
-function KPICard({ icon, label, value, sub, bg, accent }) {
-  const hasTrend = /^[↑↓]/.test(sub || "");
-  const isDown = (sub || "").startsWith("↓");
+function KPICard({ icon, label, value, sub, bg }) {
   return (
     <div style={{
-      position:"relative",overflow:"hidden",minWidth:0,minHeight:132,boxSizing:"border-box",
-      background:"linear-gradient(145deg, #fff 0%, #fcfbff 100%)", border:"1px solid #eceaf3", borderRadius:14,
-      padding:"14px 15px 13px", display:"flex", flexDirection:"column", justifyContent:"space-between", gap:12,
-      boxShadow:"0 3px 12px rgba(32,24,68,0.045)",transition:"transform .16s ease, box-shadow .16s ease",
+      background:"#fff", border:"1px solid #eee", borderRadius:12,
+      padding:"14px 16px", display:"flex", alignItems:"center", gap:14,
     }}>
-      <div style={{ position:"absolute",left:0,top:0,bottom:0,width:3,background:accent||"#534AB7" }} />
-      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8 }}>
-        <div style={{ fontSize:11,fontWeight:550,color:"#777386",lineHeight:1.3,minWidth:0 }}>{label}</div>
       <div style={{
-          width:36,height:36,borderRadius:11,background:bg,border:"1px solid rgba(30,25,55,0.035)",
-          display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,
+        width:44, height:44, borderRadius:10, background:bg,
+        display:"flex", alignItems:"center", justifyContent:"center", fontSize:20,
       }}>{icon}</div>
-      </div>
-      <div style={{ minWidth:0 }}>
-        <div style={{ fontSize:25,fontWeight:750,letterSpacing:"-0.035em",lineHeight:1.05,color:"#211b35",fontVariantNumeric:"tabular-nums",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{value ?? "—"}</div>
-        {sub && (hasTrend ? (
-          <span style={{ display:"inline-flex",alignItems:"center",gap:4,maxWidth:"100%",marginTop:8,padding:"4px 7px",borderRadius:20,background:isDown?"#FCEBEB":"#EAF3DE",color:isDown?"#A32D2D":"#27500A",fontSize:9,fontWeight:650,lineHeight:1.25,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }} title={sub}>{sub}</span>
-        ) : (
-          <div title={sub} style={{ fontSize:9,color:"#858091",marginTop:7,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden" }}>{sub}</div>
-        ))}
+      <div>
+        <div style={{ fontSize:11, color:"#888" }}>{label}</div>
+        <div style={{ fontSize:22, fontWeight:600, lineHeight:1.2 }}>{value ?? "—"}</div>
+        {sub && <div style={{ fontSize:11, color:"#888", marginTop:2 }}>{sub}</div>}
       </div>
     </div>
   );
@@ -220,28 +209,28 @@ export default function DeanDashboard() {
 
         {/* KPI Cards */}
         <div style={{
-          display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(205px,1fr))",
-          gap:12, marginBottom:16,
+          display:"grid", gridTemplateColumns:"repeat(6,1fr)",
+          gap:10, marginBottom:14,
         }}>
           <KPICard icon="📄" label="Total Publications"
             value={kpis.total_publications}
-            sub={growthStr(g.publications, g.publications_abs)} bg="#EEEDFE" accent="#534AB7" />
+            sub={growthStr(g.publications, g.publications_abs)} bg="#EEEDFE" />
           <KPICard icon="📚" label="Publications This Year"
             value={kpis.publications_this_year}
-            sub={growthStr(g.publications, g.publications_abs)} bg="#E6F1FB" accent="#185FA5" />
+            sub={growthStr(g.publications, g.publications_abs)} bg="#E6F1FB" />
           <KPICard icon="💬" label="Total Citations"
             value={kpis.total_citations?.toLocaleString()}
-            sub={growthStr(g.citations)} bg="#EAF3DE" accent="#27500A" />
+            sub={growthStr(g.citations)} bg="#EAF3DE" />
           <KPICard icon="👥" label="Active Faculty"
             value={kpis.active_faculty}
             sub={!deptId ? `across all depts of ${schoolName}` : selectedDept.dept_name}
-            bg="#FAEEDA" accent="#BA7517" />
+            bg="#FAEEDA" />
           <KPICard icon="🏆" label="h-index (Institution)"
             value={kpis.inst_h_index}
-            sub="Computed from publications" bg="#E1F5EE" accent="#0F6E56" />
+            sub="Computed from publications" bg="#E1F5EE" />
           <KPICard icon="🎯" label="Avg Impact Factor"
             value={kpis.avg_impact_factor ?? "N/A"}
-            sub={growthStr(g.impact_factor)} bg="#FCEBEB" accent="#A32D2D" />
+            sub={growthStr(g.impact_factor)} bg="#FCEBEB" />
         </div>
 
         {/* Charts Row */}
