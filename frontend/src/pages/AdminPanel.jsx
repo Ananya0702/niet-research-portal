@@ -217,12 +217,12 @@ export default function AdminPanel() {
       {/* ═══ SIDEBAR ═══ */}
       <div style={{ width:sidebarOpen?240:0, overflow:"hidden", background:SIDEBAR, color:"#fff", display:"flex", flexDirection:"column", transition:"width 0.2s", flexShrink:0 }}>
         <div style={{ padding:"20px 18px", borderBottom:"1px solid rgba(255,255,255,0.06)", display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:36, height:36, background:P, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", padding:5, boxShadow:"0 0 14px rgba(91,61,245,0.4)" }}>
-            <img src="/niet-logo.svg" alt="NIET" style={{ width:"100%", height:"100%", objectFit:"contain", filter:"brightness(0) invert(1)" }} />
+          <div style={{ width:92, height:42, background:"#fff", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"4px 7px", boxSizing:"border-box", flexShrink:0 }}>
+            <img src="/niet-logo.svg" alt="NIET Greater Noida" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
           </div>
           <div>
-            <div style={{ fontSize:16, fontWeight:700 }}>NIET</div>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>Admin Panel</div>
+            <div style={{ fontSize:14, fontWeight:700 }}>Admin Panel</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)" }}>Research Portal</div>
           </div>
         </div>
         <div style={{ flex:1, overflowY:"auto", padding:"8px 0" }}>
