@@ -164,7 +164,7 @@ export default function AdminPanel() {
   const handleDeleteSchool = async (id,name) => { if (!window.confirm(`Delete "${name}"?`)) return; try { await apiDel(`/admin/schools/${id}`); showMsg("success","School deleted"); fetchSchools(); if (selSchoolId===id) setSelSchoolId(null); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } };
 
   // ── Departments CRUD ──
-  const handleCreateDept = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/departments", { ...deptForm, school_id:parseInt(deptForm.school_id), hod_faculty_id:deptForm.hod_faculty_id?parseInt(deptForm.hod_faculty_id):null, established_year:deptForm.established_year?parseInt(deptForm.established_year):null, }); showMsg("success","✅ Department created"); setDeptModal(false); setDeptForm({school_id:"",dept_code:"",dept_name:"",hod_faculty_id:"",established_year:""}); fetchDepts(); fetchSchools(); } catch(err) { showMsg("error",err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
+  const handleCreateDept = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/departments", { ...deptForm, dept_code:deptForm.dept_code.trim(), dept_name:deptForm.dept_name.trim(), school_id:parseInt(deptForm.school_id), hod_faculty_id:deptForm.hod_faculty_id?parseInt(deptForm.hod_faculty_id):null, established_year:deptForm.established_year?parseInt(deptForm.established_year):null, }); showMsg("success","✅ Department created"); setDeptModal(false); setDeptForm({school_id:"",dept_code:"",dept_name:"",hod_faculty_id:"",established_year:""}); fetchDepts(); fetchSchools(); } catch(err) { showMsg("error",err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
   const handleDeleteDept = async (id,name) => { if (!window.confirm(`Delete "${name}"?`)) return; try { await apiDel(`/admin/departments/${id}`); showMsg("success","Department deleted"); fetchDepts(); fetchSchools(); } catch(err) { showMsg("error",err.response?.data?.detail||"Error"); } };
 
   // ── Derived ──
@@ -392,25 +392,50 @@ export default function AdminPanel() {
 
       {/* Department Modal */}
       {deptModal && (
-        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100 }}>
-          <div style={{ background:"#fff",borderRadius:14,padding:"24px 28px",width:480 }}>
-            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
-              <span style={{ fontSize:16,fontWeight:600 }}>Create New Department</span>
-              <span style={{ cursor:"pointer",color:"#888",fontSize:22 }} onClick={()=>setDeptModal(false)}>×</span>
-            </div>
-            <form onSubmit={handleCreateDept}>
-              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-                <div><label style={lbl}>School *</label><select required value={deptForm.school_id} onChange={e=>setDeptForm({...deptForm,school_id:e.target.value})} style={inp}><option value="">Select School</option>{schools.map(s=><option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}</select></div>
-                <div><label style={lbl}>Dept Code *</label><input required value={deptForm.dept_code} onChange={e=>setDeptForm({...deptForm,dept_code:e.target.value})} style={inp} placeholder="e.g. CSE" /></div>
+        <div onClick={e=>{if(e.target===e.currentTarget&&!saving)setDeptModal(false);}} style={{ position:"fixed",inset:0,background:"rgba(20,16,35,0.52)",backdropFilter:"blur(3px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="create-department-title" style={{ background:"#fff",borderRadius:18,padding:"26px 28px 22px",width:"min(560px, 100%)",maxHeight:"calc(100vh - 32px)",overflowY:"auto",boxShadow:"0 24px 70px rgba(24,16,58,0.24)",border:"1px solid rgba(255,255,255,0.8)" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:14,marginBottom:22 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                <span aria-hidden="true" style={{ width:42,height:42,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#0C447C",background:"#E6F1FB" }}>▦</span>
+                <div>
+                  <div id="create-department-title" style={{ fontSize:18,fontWeight:700,color:"#211b35",letterSpacing:"-0.2px" }}>Create New Department</div>
+                  <div style={{ fontSize:11,color:"#858091",marginTop:4 }}>Add a department and connect it to a school.</div>
+                </div>
               </div>
-              <div style={{ marginBottom:14 }}><label style={lbl}>Department Name *</label><input required value={deptForm.dept_name} onChange={e=>setDeptForm({...deptForm,dept_name:e.target.value})} style={inp} placeholder="e.g. Computer Science & Engineering" /></div>
-              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14 }}>
-                <div><label style={lbl}>Assign HOD</label><select value={deptForm.hod_faculty_id} onChange={e=>setDeptForm({...deptForm,hod_faculty_id:e.target.value})} style={inp}><option value="">Select HOD</option>{faculty.filter(f=>f.role==="hod"||f.role==="faculty").map(f=><option key={f.faculty_id} value={f.faculty_id}>{f.name}</option>)}</select></div>
-                <div><label style={lbl}>Est. Year</label><input type="number" value={deptForm.established_year} onChange={e=>setDeptForm({...deptForm,established_year:e.target.value})} style={inp} placeholder="e.g. 2000" /></div>
+              <button type="button" aria-label="Close dialog" onClick={()=>!saving&&setDeptModal(false)} disabled={saving} style={{ width:30,height:30,border:0,borderRadius:8,background:"#f6f5f9",color:"#777",fontSize:20,lineHeight:1,cursor:saving?"not-allowed":"pointer" }}>×</button>
+            </div>
+            <form onSubmit={e=>{
+              if(!deptForm.dept_code.trim()||!deptForm.dept_name.trim()){e.preventDefault();showMsg("error","Department code and name are required");return;}
+              handleCreateDept(e);
+            }}>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16 }}>
+                <div>
+                  <label htmlFor="department-school" style={{ ...lbl,display:"block",fontWeight:600,color:"#383346",marginBottom:7 }}>School <span style={{ color:"#A32D2D" }}>*</span></label>
+                  <select id="department-school" required value={deptForm.school_id} onChange={e=>setDeptForm({...deptForm,school_id:e.target.value})} style={{ ...inp,width:"100%",boxSizing:"border-box",padding:"11px 12px",borderRadius:10,border:"1px solid #dedce8",background:"#fcfcfe" }}><option value="">Select a school</option>{schools.map(s=><option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}</select>
+                  {!schools.length && <div style={{ fontSize:10,color:"#A32D2D",marginTop:6 }}>Create a school before adding departments.</div>}
+                </div>
+                <div>
+                  <label htmlFor="department-code" style={{ ...lbl,display:"block",fontWeight:600,color:"#383346",marginBottom:7 }}>Department code <span style={{ color:"#A32D2D" }}>*</span></label>
+                  <input id="department-code" required autoCapitalize="characters" value={deptForm.dept_code} onChange={e=>setDeptForm({...deptForm,dept_code:e.target.value})} style={{ ...inp,width:"100%",boxSizing:"border-box",padding:"11px 12px",borderRadius:10,border:"1px solid #dedce8",background:"#fcfcfe" }} placeholder="e.g. CSE" />
+                </div>
+              </div>
+              <div style={{ marginBottom:16 }}>
+                <label htmlFor="department-name" style={{ ...lbl,display:"block",fontWeight:600,color:"#383346",marginBottom:7 }}>Department name <span style={{ color:"#A32D2D" }}>*</span></label>
+                <input id="department-name" required value={deptForm.dept_name} onChange={e=>setDeptForm({...deptForm,dept_name:e.target.value})} style={{ ...inp,width:"100%",boxSizing:"border-box",padding:"11px 12px",borderRadius:10,border:"1px solid #dedce8",background:"#fcfcfe" }} placeholder="e.g. Computer Science & Engineering" />
+              </div>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:22 }}>
+                <div>
+                  <label htmlFor="department-hod" style={{ ...lbl,display:"block",fontWeight:600,color:"#383346",marginBottom:7 }}>Assign HOD <span style={{ fontSize:10,fontWeight:400,color:"#918d9c" }}>(optional)</span></label>
+                  <select id="department-hod" value={deptForm.hod_faculty_id} onChange={e=>setDeptForm({...deptForm,hod_faculty_id:e.target.value})} style={{ ...inp,width:"100%",boxSizing:"border-box",padding:"11px 12px",borderRadius:10,border:"1px solid #dedce8",background:"#fcfcfe" }}><option value="">No HOD assigned</option>{faculty.filter(f=>f.role==="hod"||f.role==="faculty").map(f=><option key={f.faculty_id} value={f.faculty_id}>{f.name}</option>)}</select>
+                </div>
+                <div>
+                  <label htmlFor="department-year" style={{ ...lbl,display:"block",fontWeight:600,color:"#383346",marginBottom:7 }}>Established year <span style={{ fontSize:10,fontWeight:400,color:"#918d9c" }}>(optional)</span></label>
+                  <input id="department-year" type="number" min="1800" max={new Date().getFullYear()} value={deptForm.established_year} onChange={e=>setDeptForm({...deptForm,established_year:e.target.value})} style={{ ...inp,width:"100%",boxSizing:"border-box",padding:"11px 12px",borderRadius:10,border:"1px solid #dedce8",background:"#fcfcfe" }} placeholder="e.g. 2000" />
+                </div>
               </div>
               <div style={{ display:"flex",gap:10 }}>
-                <button type="button" onClick={()=>setDeptModal(false)} style={{ flex:1,padding:10,border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",cursor:"pointer" }}>Cancel</button>
-                <button type="submit" disabled={saving} style={{ flex:2,padding:10,background: "#0C447C",color:"#fff",borderRadius:8,fontSize:13,fontWeight:500,border:"none",cursor:"pointer" }}>{saving?"Creating...":"Create Department"}</button>
+                <button type="button" onClick={()=>setDeptModal(false)} disabled={saving} style={{ flex:1,padding:"11px 14px",border:"1px solid #dedce8",borderRadius:10,fontSize:12,fontWeight:600,color:"#514d5c",background:"#fff",cursor:saving?"not-allowed":"pointer",opacity:saving?0.6:1 }}>Cancel</button>
+                <button type="submit" disabled={saving||!schools.length} style={{ flex:1.5,padding:"11px 14px",background:saving?"#5c84ad":"#0C447C",color:"#fff",borderRadius:10,fontSize:12,fontWeight:650,border:"none",boxShadow:"0 5px 12px rgba(12,68,124,0.18)",cursor:saving||!schools.length?"not-allowed":"pointer",opacity:schools.length?1:0.6 }}>{saving?"Creating department…":"Create Department"}</button>
               </div>
             </form>
           </div>
