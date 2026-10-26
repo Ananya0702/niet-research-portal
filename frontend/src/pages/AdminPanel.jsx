@@ -100,8 +100,9 @@ export default function AdminPanel() {
     setLoginSuccess("");
     setLoginLoading(true);
     try {
-      const res = await API.post("/admin/login", loginForm);
+      const res = await API.post("/admin/login", loginForm, { timeout: 15000 });
       const token = res.data.access_token;
+      if (!token) throw new Error("Login response did not include an access token");
       setLoginSuccess("Login successful. Opening the Admin Panel…");
       await new Promise((resolve) => setTimeout(resolve, 900));
       localStorage.setItem("admin_token", token);
@@ -110,6 +111,8 @@ export default function AdminPanel() {
     } catch (error) {
       if (error.response?.status === 401) {
         setLoginError("Invalid credentials. Check the admin email and password for the connected database; the demo password may have been changed.");
+      } else if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+        setLoginError("The login service did not respond within 15 seconds. Check that the backend is running and reachable, then try again.");
       } else {
         setLoginError(error.response?.data?.detail || "Could not reach the login service. Please try again.");
       }
