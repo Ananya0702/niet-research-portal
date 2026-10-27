@@ -267,7 +267,9 @@ export default function Login() {
         }
         .field-input::placeholder { color: rgba(255,255,255,0.4); }
         .field-input:focus { border-color: #8b7dff; background: rgba(255,255,255,0.12); }
-        .pw-wrap,.email-wrap { position: relative; }.input-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#fff;display:flex;pointer-events:none}
+        .pw-wrap,.email-wrap { position: relative; }
+        .input-icon{position:absolute;z-index:2;left:16px;top:50%;transform:translateY(-50%);color:#fff;display:flex;align-items:center;justify-content:center;width:22px;height:22px;opacity:1;pointer-events:none}
+        .pw-toggle{z-index:3;color:#fff!important;opacity:1}.pw-toggle svg{display:block;flex:none}
         .pw-toggle {
           position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
           background: none; border: none; color:#fff;display:flex;cursor: pointer; padding: 4px;
