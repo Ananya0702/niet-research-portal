@@ -186,10 +186,10 @@ export default function Login() {
         .login-frame {
           position: relative;
           width: 100%;
-          max-width: 1370px;
-          min-height: min(750px, calc(100vh - 64px));
+          max-width: 1200px;
+          min-height: min(670px, calc(100vh - 64px));
           display: grid;
-          grid-template-columns: 1.32fr 1fr;
+          grid-template-columns: 1.28fr 1fr;
           gap: 0;
           align-items: stretch;
           overflow: hidden;
@@ -198,7 +198,7 @@ export default function Login() {
           box-shadow: 0 24px 70px rgba(0,0,0,0.45);
         }
         .login-info-box, .login-form-box {
-          padding: 36px 40px 30px;
+          padding: 30px 34px 26px;
           background: rgba(10, 18, 26, 0.38);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
@@ -213,9 +213,9 @@ export default function Login() {
           align-items: center;
           justify-content: center;
         }
-        .info-topline { display:flex; align-items:center; gap:28px; margin-bottom:23px; }
+        .info-topline { display:flex; align-items:center; gap:22px; margin-bottom:18px; }
         .info-logo {
-          flex:none; width: 205px; height: 90px; border-radius: 16px;
+          flex:none; width: 185px; height: 80px; border-radius: 15px;
           background: #fff;
           padding: 12px 20px; display: flex; align-items: center; justify-content: center;
           box-shadow: 0 10px 30px rgba(0,0,0,0.35);
@@ -225,29 +225,29 @@ export default function Login() {
         .brand-values span {display:flex;align-items:center;gap:7px}.brand-values svg{color:#dbeafe}.brand-values i{height:20px;width:1px;background:rgba(255,255,255,.42)}
         .info-name { font-size: 24px; font-weight: 700; letter-spacing: 0.02em; }
         .info-place { font-size: 13px; color: rgba(255,255,255,0.7); }
-        .info-hero { margin-bottom: 22px; }
-        .hero-title { font-size: 40px; font-weight: 750; margin: 0 0 3px; line-height: 1.12; letter-spacing:-.035em; }
+        .info-hero { margin-bottom: 17px; }
+        .hero-title { font-size: 36px; font-weight: 750; margin: 0 0 3px; line-height: 1.12; letter-spacing:-.035em; }
         .hero-title span,.info-heading span {background:linear-gradient(100deg,#3aa3ff,#a179ff);background-clip:text;-webkit-background-clip:text;color:transparent}
         .hero-tagline { font-size: 18px; font-weight: 650; color: rgba(255,255,255,0.96); margin: 0 0 9px; }
         .hero-desc { font-size: 13.5px; line-height: 1.65; color: rgba(255,255,255,0.75); margin: 0; max-width: 480px; }
-        .info-block { margin-bottom: 14px; display:grid;grid-template-columns:50px 1fr;gap:16px;align-items:start; }
-        .vision-block{border-top:1px solid rgba(143,92,246,.8);padding-top:20px}
-        .info-symbol{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#8057ff,#4e4cf6);display:grid;place-items:center;box-shadow:0 8px 20px #3b20a966}
+        .info-block { margin-bottom: 11px; display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start; }
+        .vision-block{border-top:1px solid rgba(143,92,246,.8);padding-top:16px}
+        .info-symbol{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#8057ff,#4e4cf6);display:grid;place-items:center;box-shadow:0 8px 20px #3b20a966}
         .info-heading {
           font-size: 16px; font-weight: 700; text-transform: uppercase;
           letter-spacing: 0.025em; color: rgba(255,255,255,.9); margin: 0 0 5px;
         }
         .info-text {
-          font-size: 13px; line-height: 1.55; color: rgba(255,255,255,0.91); margin: 0;
+          font-size: 12px; line-height: 1.5; color: rgba(255,255,255,0.91); margin: 0;
         }
         .feature-strip{margin-top:auto;display:flex;justify-content:space-around;align-items:center;gap:8px;padding:14px 10px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.1);border-radius:18px}
         .feature-strip span{display:flex;align-items:center;gap:8px;font-size:11px;white-space:nowrap;padding:0 8px}.feature-strip span+span{border-left:1px solid rgba(255,255,255,.2)}.feature-strip svg{color:#e1eaff;flex:none}
 
-        .form-inner { width: 100%; max-width: 445px; padding:34px 32px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.26);border-radius:25px;box-shadow:0 14px 50px rgba(0,0,0,.16); }
+        .form-inner { width: 100%; max-width: 410px; padding:28px 26px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.26);border-radius:23px;box-shadow:0 14px 50px rgba(0,0,0,.16); }
         .form-logo { display: none; }
-        .form-title { font-size: 34px; font-weight: 750; margin: 0 0 13px; letter-spacing:-.025em }
+        .form-title { font-size: 31px; font-weight: 750; margin: 0 0 11px; letter-spacing:-.025em }
         .title-accent{width:64px;height:3px;background:linear-gradient(90deg,#8b5cf6,#48a4ff);margin-bottom:15px;border-radius:2px}
-        .form-subtitle { font-size: 16px; color: rgba(255,255,255,0.86); margin: 0 0 28px; }
+        .form-subtitle { font-size: 15px; color: rgba(255,255,255,0.86); margin: 0 0 22px; }
         .form-error {
           background: rgba(249,80,80,0.16); color: #ffd6d6;
           border: 1px solid rgba(255,150,150,0.3);
@@ -259,7 +259,7 @@ export default function Login() {
           display: block; margin-bottom: 7px;
         }
         .field-input {
-          width: 100%; padding: 14px 48px 14px 56px; box-sizing: border-box;
+          width: 100%; padding: 12px 44px 12px 52px; box-sizing: border-box;
           background: rgba(255,255,255,0.08);
           border: 1.5px solid rgba(255,255,255,0.48);
           border-radius: 14px; font-size: 14px; color: #fff; outline: none;
@@ -274,10 +274,10 @@ export default function Login() {
           position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
           background: none; border: none; color:#fff;display:flex;cursor: pointer; padding: 4px;
         }
-        .form-options{display:flex;justify-content:space-between;align-items:center;margin:0 0 22px}.form-options a{font-size:12px;color:#b9aaff;text-decoration:none;font-weight:600}.form-options a:hover{text-decoration:underline}
+        .form-options{display:flex;justify-content:space-between;align-items:center;margin:0 0 18px}.form-options a{font-size:12px;color:#b9aaff;text-decoration:none;font-weight:600}.form-options a:hover{text-decoration:underline}
         .remember-option{display:flex;align-items:center;gap:9px;font-size:12px;color:rgba(255,255,255,.94);cursor:pointer}.remember-option input{position:absolute;opacity:0;width:1px;height:1px}.custom-check{width:19px;height:19px;border:1px solid rgba(255,255,255,.55);border-radius:5px;display:grid;place-items:center;color:transparent}.remember-option input:checked+.custom-check{background:linear-gradient(135deg,#9158f7,#3aa4ff);border-color:transparent;color:#fff}
         .signin-btn {
-          width: 100%; padding: 14px; border: 1px solid rgba(255,255,255,.3); border-radius: 16px;
+          width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,.3); border-radius: 15px;
           font-size: 16px; font-weight: 700; color: #fff; cursor: pointer;display:flex;align-items:center;justify-content:center;gap:10px;
           background: linear-gradient(110deg, #7550f6 0%, #536cf7 52%, #2b9ff2 100%);
           box-shadow: 0 10px 26px rgba(73,91,245,0.48),inset 0 1px 0 rgba(255,255,255,.35);
@@ -285,7 +285,7 @@ export default function Login() {
         }
         .signin-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 32px rgba(107,78,245,0.5); }
         .signin-btn:disabled { opacity: 0.75; cursor: default; }
-        .login-button-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.25)}.divider { display: flex; align-items: center; gap: 12px; margin: 25px 0 18px; }
+        .login-button-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.25)}.divider { display: flex; align-items: center; gap: 12px; margin: 19px 0 15px; }
         .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.18); }
         .divider span { font-size: 11px; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.08em; }
         .admin-link {
