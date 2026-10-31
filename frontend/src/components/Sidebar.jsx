@@ -175,7 +175,11 @@ export default function Sidebar() {
       alert(`✅ Sync complete!\n\n📄 New publications added: ${data.new_publications}\n📋 Already existed (skipped): ${data.already_existed}\n📈 h-index: ${data.h_index}\n💬 Total citations: ${data.total_citations}`);
       window.location.reload();
     } catch (err) {
-      alert(`⚠️ ${err.response?.data?.detail || "Sync failed. Is the backend running?"}`);
+      const detail = err.response?.data?.detail;
+      const message = typeof detail === "string"
+        ? detail
+        : detail?.message || err.message || "Google Scholar sync failed. Please try again.";
+      alert(`⚠️ Google Scholar sync failed:\n\n${message}`);
     } finally {
       setSyncing(false);
     }
