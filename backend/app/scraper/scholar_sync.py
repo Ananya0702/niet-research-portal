@@ -1,6 +1,7 @@
 import re
 import time
 import urllib.parse
+import os
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -108,6 +109,12 @@ def fetch_scholar_data(scholar_id: str, mock: bool = False, author_name: str = "
     if not clean_id:
         return _sample_scholar_data()
 
+    # Use a managed Google Scholar Author API when configured. Unlike direct
+    # scraping, this works from hosted backends whose IPs Google rate-limits.
+    serpapi_key = os.getenv("SERPAPI_API_KEY", "").strip()
+    if serpapi_key:
+        return _fetch_via_serpapi(clean_id, serpapi_key)
+
     # Tier 1: Direct HTTP scraping (fast — single request)
     try:
         data = _fetch_via_http(clean_id)
@@ -116,17 +123,7 @@ def fetch_scholar_data(scholar_id: str, mock: bool = False, author_name: str = "
     except Exception as e:
         print(f"[Scholar] Direct HTTP scraping failed or rate-limited: {e}")
 
-    # Tier 2: OpenAlex Academic Bridge (100% cloud-friendly, zero IP blocks)
-    try:
-        print(f"[Scholar] Attempting OpenAlex academic bridge for author '{author_name}', ORCID '{orcid_id}'...")
-        data = _fetch_via_openalex(scholar_id=clean_id, author_name=author_name, orcid_id=orcid_id)
-        if data and data.get("publications"):
-            print(f"[Scholar] OpenAlex bridge succeeded with {len(data['publications'])} publications.")
-            return data
-    except Exception as e:
-        print(f"[Scholar] OpenAlex bridge failed: {e}")
-
-    # Tier 3: scholarly library (slow — fills each pub individually)
+    # Tier 2: scholarly library (still fetches from Google Scholar itself).
     try:
         data = _fetch_via_scholarly(clean_id)
         if data and data.get("publications"):
@@ -134,13 +131,106 @@ def fetch_scholar_data(scholar_id: str, mock: bool = False, author_name: str = "
     except Exception as e:
         print(f"[Scholar] scholarly failed: {e}")
 
-    # Tier 4: If blocked by Google CAPTCHA on cloud server and all fallbacks exhausted
-    raise Exception("Google Scholar rate-limited cloud server. Please sync using your local machine or use ORCID.")
+    # Do not silently substitute OpenAlex results: this action is specifically
+    # a Google Scholar sync and must keep its source attribution correct.
+    raise Exception(
+        "Google Scholar is rate-limiting this cloud server. Configure SERPAPI_API_KEY "
+        "on the backend for hosted Google Scholar sync, or sync from a local machine."
+    )
+
+
+def _fetch_via_serpapi(scholar_id: str, api_key: str) -> dict:
+    """Fetch one page (up to 100 records) from SerpApi's Scholar Author API."""
+    try:
+        response = requests.get(
+            "https://serpapi.com/search.json",
+            params={
+                "engine": "google_scholar_author",
+                "author_id": scholar_id,
+                "hl": "en",
+                "num": 100,
+                "api_key": api_key,
+            },
+            timeout=45,
+        )
+    except requests.RequestException as exc:
+        raise Exception("Could not reach the configured Google Scholar sync provider.") from exc
+
+    if response.status_code != 200:
+        raise Exception(f"Google Scholar sync provider returned HTTP {response.status_code}.")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise Exception("Google Scholar sync provider returned an unreadable response.") from exc
+
+    provider_error = payload.get("error")
+    if provider_error:
+        # Provider messages may echo request parameters, so don't return them
+        # verbatim (the request contains the private API key).
+        safe_error = str(provider_error).replace(api_key, "[redacted]")[:240]
+        raise Exception(f"Google Scholar sync provider error: {safe_error}")
+
+    articles = payload.get("articles") or []
+    publications = []
+    for article in articles:
+        publication = str(article.get("publication") or "")
+        year_value = article.get("year")
+        if not year_value:
+            year_match = re.search(r"\b(?:19|20)\d{2}\b", publication)
+            year_value = year_match.group(0) if year_match else None
+        try:
+            year = int(year_value) if year_value else datetime.now().year
+        except (TypeError, ValueError):
+            year = datetime.now().year
+        cited_by = article.get("cited_by") or {}
+        cited_value = cited_by.get("value", 0) if isinstance(cited_by, dict) else 0
+        try:
+            citation_count = int(cited_value or 0)
+        except (TypeError, ValueError):
+            citation_count = 0
+        publications.append({
+            "title": article.get("title") or "",
+            "journal_name": publication.split(",", 1)[0].strip() or "Unknown Journal",
+            "year": year,
+            "citations_count": citation_count,
+            "authors": article.get("authors") or "",
+            "source_id": article.get("citation_id") or "",
+            "external_url": article.get("link") or "",
+            "doi": None,
+        })
+
+    metrics = {"h_index": 0, "i10_index": 0, "citedby": 0}
+    cited_by_section = payload.get("cited_by") or {}
+    for row in cited_by_section.get("table", []) if isinstance(cited_by_section, dict) else []:
+        if not isinstance(row, dict):
+            continue
+        for metric_name, values in row.items():
+            if not isinstance(values, dict):
+                continue
+            metric_key = str(metric_name).lower()
+            if "citation" in metric_key:
+                output_key = "citedby"
+            elif "i10" in metric_key:
+                output_key = "i10_index"
+            elif "h_index" in metric_key or "h-index" in metric_key or "indice_h" in metric_key:
+                output_key = "h_index"
+            else:
+                continue
+            try:
+                metrics[output_key] = int(values.get("all") or 0)
+            except (TypeError, ValueError):
+                pass
+
+    if not metrics["citedby"]:
+        metrics["citedby"] = sum(item["citations_count"] for item in publications)
+    return {**metrics, "publications": publications}
 
 
 def _fetch_via_openalex(scholar_id: str = "", author_name: str = "", orcid_id: str = "") -> dict:
-    """Fetch verified publications and metrics from OpenAlex academic graph.
-    OpenAlex has 250M+ indexed works, open REST API, and never blocks cloud servers.
+    """Fetch publications and metrics from OpenAlex academic graph.
+
+    Kept for explicit OpenAlex use; Google Scholar sync must not call this as a
+    fallback because those records are from a different source.
     """
     headers = {"User-Agent": "NIETResearchPortal/1.0 (mailto:admin@niet.co.in)"}
     works = []

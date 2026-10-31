@@ -28,7 +28,7 @@ class GoogleScholarService(ResearchProvider):
                 citation_count=p.get("citations_count") or 0,
                 publication_type=p.get("publication_type") or "",
                 source_id=p.get("source_id") or f"gs_{idx+1}",
-                external_url=f"https://scholar.google.com/citations?view_op=list_works&hl=en&user={aid}",
+                external_url=p.get("external_url") or f"https://scholar.google.com/citations?view_op=list_works&hl=en&user={aid}",
             ))
         return SyncResult(
             platform=self.platform,

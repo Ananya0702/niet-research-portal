@@ -95,6 +95,7 @@ niet-portal/
 | `SECRET_KEY` | backend | JWT signing — **set a long random value** |
 | `CORS_ORIGINS` | backend, ml-api | Extra allowed browser origins (comma-separated) |
 | `OTP_API_BASE_URL` | backend | URL of the Email OTP service |
+| `SERPAPI_API_KEY` | backend | Optional hosted Google Scholar Author API key |
 | `EMAIL_ADDRESS` `EMAIL_APP_PASSWORD` | otp-api | Gmail app-password credentials |
 | `VITE_API_BASE_URL` | frontend (build time) | Backend base URL for axios |
 
@@ -152,7 +153,17 @@ Tables are created automatically on first backend boot
    OTP_API_BASE_URL=https://<otp-service-domain>     # set after step 4
    PORTAL_URL=https://<your-vercel-project>.vercel.app
    OTP_ALLOW_IN_APP_FALLBACK=false
+   SERPAPI_API_KEY=<optional Google Scholar API key for cloud sync>
    ```
+
+Google Scholar may rate-limit requests from cloud-hosted IP addresses. If
+that happens, add a SerpApi key as the backend's `SERPAPI_API_KEY` secret;
+the portal then fetches Scholar's author profile through the Google Scholar
+Author API. When enabled, the faculty member's Scholar profile ID is sent to
+SerpApi to retrieve public profile data. Without the key, the portal tries its direct Google Scholar
+connection; if the hosted backend is blocked, sync will fail clearly and the
+local-machine sync remains a no-cost workaround. Each API request retrieves up
+to 100 profile articles.
 
 4. **Settings → Networking → Generate Domain** → note e.g.
    `https://niet-backend-production.up.railway.app`. Verify:
