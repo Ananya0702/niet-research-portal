@@ -26,7 +26,16 @@ export default function AdminIPRView({ onMessage }) {
       onMessage("error", error.response?.data?.detail || "Could not load IPR records.");
     } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let cancelled = false;
+    API.get("/patents/admin/all", headers())
+      .then((response) => { if (!cancelled) setRecords(response.data || []); })
+      .catch((error) => {
+        if (!cancelled) onMessage("error", error.response?.data?.detail || "Could not load IPR records.");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addRecord = async (event) => {
     event.preventDefault();
