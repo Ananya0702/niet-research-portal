@@ -228,13 +228,16 @@ def forgot_request(payload: ForgotRequest, request: Request, db: Session = Depen
     _audit(db, fac.faculty_id, "otp_requested", status="success", method="email",
            request=request, detail=f"Forgot-password OTP sent to {res['masked_email']}")
     db.commit()
-    return {
+    response = {
         "message": sent.get("message") or "OTP has been sent to your registered email.",
         "method": "email",
         "masked_contact": res["masked_email"],
         "expires_in_seconds": OTP_FLOW_EXPIRY_MINUTES * 60,
         "retry_after_seconds": OTP_RESEND_COOLDOWN_SECONDS,
     }
+    if sent.get("delivery") == "in_app_fallback" and sent.get("fallback_code"):
+        response.update(delivery="in_app_fallback", fallback_code=sent["fallback_code"])
+    return response
 
 
 @router.post("/forgot-password/verify")
@@ -267,6 +270,7 @@ def forgot_verify(payload: OtpVerify, request: Request, db: Session = Depends(ge
     flow["verified"] = True
     flow["verified_at"] = datetime.now()
     set_forgot_password_flow(fac.faculty_id, flow)
+    fac.email_verified = True
     _audit(db, fac.faculty_id, "otp_verified", status="success", method="email",
            request=request, detail="OTP verified for password reset")
     db.commit()
@@ -464,13 +468,16 @@ def change_password_email_request(payload: EmailOtpRequest, request: Request,
     _audit(db, fac.faculty_id, "otp_requested", status="success", method="email",
            request=request, detail=f"OTP sent to {res['masked_email']} for password change")
     db.commit()
-    return {
+    response = {
         "message": sent.get("message") or "OTP has been sent to your registered email.",
         "method": "email",
         "masked_contact": res["masked_email"],
         "expires_in_seconds": OTP_FLOW_EXPIRY_MINUTES * 60,
         "retry_after_seconds": OTP_RESEND_COOLDOWN_SECONDS,
     }
+    if sent.get("delivery") == "in_app_fallback" and sent.get("fallback_code"):
+        response.update(delivery="in_app_fallback", fallback_code=sent["fallback_code"])
+    return response
 
 
 @router.post("/change-password/email/verify")

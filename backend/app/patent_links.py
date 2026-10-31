@@ -44,7 +44,9 @@ def link_saved_patents_to_new_faculty(db, faculty):
 
         scope = patent.extra_data.get("_patent_link_scope", {}) if isinstance(patent.extra_data, dict) else {}
         level, scope_id = scope.get("level"), scope.get("id")
-        if level == "department":
+        if level == "institute":
+            allowed = True
+        elif level == "department":
             allowed = faculty.dept_id == scope_id
         elif level == "school":
             allowed = faculty.school_id == scope_id
@@ -59,12 +61,14 @@ def link_saved_patents_to_new_faculty(db, faculty):
         if not allowed:
             continue
 
-        # Do not guess when another account in the same import scope has the same name.
+        # Do not guess when another account in the allowed matching scope has the same name.
         in_scope = []
         for candidate in candidates:
             if _normal(candidate.name) != normalized_name:
                 continue
-            if level == "department":
+            if level == "institute":
+                same_scope = True
+            elif level == "department":
                 same_scope = candidate.dept_id == scope_id
             elif level == "school":
                 candidate_dept = departments.get(candidate.dept_id)

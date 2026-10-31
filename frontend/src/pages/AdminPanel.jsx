@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import API, { runSyncJob } from "../services/api";
 import * as XLSX from "xlsx";
 import ImportWizard from "../components/ImportWizard";
+import AdminIPRView from "../components/AdminIPRView";
 
 const P = "#5B3DF5";
 const SIDEBAR = "#1A1626";
@@ -14,6 +15,7 @@ const ADMIN_NAV_ICONS = {
   departments: <><path d="M4 21V7l8-4 8 4v14" /><path d="M2 21h20M8 10h2m4 0h2m-8 4h2m4 0h2m-5 7v-4h4v4" /></>,
   faculty: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20z" /><path d="M16 5.2a3.5 3.5 0 0 1 0 6.6m2 3a5 5 0 0 1 3.5 4.7V20h-4" /></>,
   details: <><rect x="5" y="3.5" width="14" height="18" rx="2" /><path d="M9 3.5v-1h6v1M8.5 9h7m-7 4h7m-7 4h4" /></>,
+  ipr: <><path d="M12 3 4.5 7v5c0 4.5 3.2 7.9 7.5 9 4.3-1.1 7.5-4.5 7.5-9V7L12 3Z"/><path d="m9 12 2 2 4-4"/></>,
   security: <><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z" /><path d="m9 12 2 2 4-4" /></>,
   export: <><path d="M12 3v12m-4-4 4 4 4-4" /><path d="M5 15v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" /></>,
 };
@@ -38,6 +40,7 @@ const SIDEBAR_ITEMS = [
     { key: "depts",       icon: "departments", label: "Departments" },
     { key: "faculty",     icon: "faculty", label: "Faculty" },
     { key: "faculty-details", icon: "details", label: "Faculty Details" },
+    { key: "ipr", icon: "ipr", label: "IPR Management" },
   ]},
   { section: "Management", items: [
     { key: "add-school", icon: "add-school", label: "Add School" },
@@ -52,7 +55,7 @@ const SIDEBAR_ITEMS = [
 
 const DESIGNATIONS = ["Professor","Associate Professor","Assistant Professor","Senior Lecturer","Lecturer","Dean","HOD",];
 const ROLES = ["faculty","hod","dean_rd"];
-const EMPTY_FORM = { name:"", email:"", password:"", role:"faculty", designation:"Assistant Professor", dept_id:"", is_phd:false, joining_year:new Date().getFullYear(), google_scholar_id:"", orcid_id:"", scopus_author_id:"", };
+const EMPTY_FORM = { name:"", email:"", role:"faculty", designation:"Assistant Professor", dept_id:"", is_phd:false, joining_year:new Date().getFullYear(), google_scholar_id:"", orcid_id:"", scopus_author_id:"", };
 
 export default function AdminPanel() {
   const [adminToken, setAdminToken] = useState(localStorage.getItem("admin_token")||"");
@@ -152,7 +155,7 @@ export default function AdminPanel() {
   useEffect(() => { if (!adminToken) return; fetchFaculty(); fetchDashboard(); fetchSchools(); fetchDepts(); fetchFacultyDetails(); }, [adminToken]); // eslint-disable-line
 
   // ── Faculty CRUD ──
-  const handleCreate = async (e) => { e.preventDefault(); setSaving(true); try { await apiPost("/admin/faculty", { ...form, dept_id:form.dept_id?parseInt(form.dept_id):null, joining_year:parseInt(form.joining_year), }); showMsg("success", `✅ ${form.name} created`); setModal(false); setForm(EMPTY_FORM); fetchFaculty(); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
+  const handleCreate = async (e) => { e.preventDefault(); setSaving(true); try { const res=await apiPost("/admin/faculty", { ...form, dept_id:form.dept_id?parseInt(form.dept_id):null, joining_year:parseInt(form.joining_year), }); showMsg("success", res.data?.message || `✅ ${form.name} created`); setModal(false); setForm(EMPTY_FORM); fetchFaculty(); } catch(err) { showMsg("error", err.response?.data?.detail||"Error"); } finally { setSaving(false); } };
   const handleUpdate = async (e) => { e.preventDefault(); setSaving(true); try { const {faculty_id, school_id, dept_id, role, ...rest} = editForm; if (!school_id) { showMsg("error","School is required"); setSaving(false); return; } if (role !== "dean_rd" && !dept_id) { showMsg("error","Department is required for HOD and Faculty"); setSaving(false); return; } await apiPut(`/admin/faculty/${editForm.faculty_id}`, editForm); showMsg("success","✅ Updated"); setEditModal(false); fetchFaculty(); } catch(err) { showMsg("error", err?.response?.data?.detail || "Update failed"); } finally { setSaving(false); } };
   const handleDeactivate = async (id,name) => { if (!window.confirm(`Deactivate ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}`); showMsg("success",`${name} deactivated`); fetchFaculty(); } catch { showMsg("error","Error"); } };
   const handleDelete = async (id,name) => { if (!window.confirm(`Permanently delete ${name}?`)) return; try { await apiDel(`/admin/faculty/${id}?hard=true`); showMsg("success",`${name} deleted`); fetchFaculty(); } catch { showMsg("error","Error"); } };
@@ -354,6 +357,8 @@ export default function AdminPanel() {
           {/* ═══ FACULTY DETAILS ═══ */}
           {activeView==="faculty-details" && <FacultyDetailsView {...{facultyDetails,facultyDetailsLoading,fdSearch,setFdSearch,fdRoleFilter,setFdRoleFilter,fdDeptFilter,setFdDeptFilter,depts,expandedFac,setExpandedFac,P,fdViewing,setFdViewing}} />}
 
+          {activeView==="ipr" && <AdminIPRView onMessage={showMsg} />}
+
           {/* ═══ EXPORT ═══ */}
           {activeView==="export" && <ExportView {...{faculty,schools,depts,P,showMsg,setActiveView}} />}
 
@@ -482,7 +487,7 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:14,marginBottom:20 }}>
           <div style={{ display:"flex",alignItems:"center",gap:12 }}>
             <span aria-hidden="true" style={{ width:42,height:42,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,color:P,background:"#EEEDFE" }}>♙</span>
-            <div><div id="create-faculty-title" style={{ fontSize:18,fontWeight:700,color:"#211b35" }}>Create Faculty Account</div><div style={{ fontSize:11,color:"#858091",marginTop:4 }}>Set up the faculty member’s account and profile.</div></div>
+            <div><div id="create-faculty-title" style={{ fontSize:18,fontWeight:700,color:"#211b35" }}>Create Faculty Account</div><div style={{ fontSize:11,color:"#858091",marginTop:4 }}>The faculty member will receive an OTP email to verify their address and set a password.</div></div>
           </div>
           <button type="button" aria-label="Close dialog" onClick={()=>!saving&&setModal(false)} disabled={saving} style={{ width:30,height:30,border:0,borderRadius:8,background:"#f6f5f9",color:"#777",fontSize:20,lineHeight:1,cursor:saving?"not-allowed":"pointer" }}>×</button>
         </div>
@@ -491,7 +496,7 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
             <div><label htmlFor="faculty-name" style={{...lbl,fontWeight:600,color:"#383346"}}>Full name <span style={{color:"#A32D2D"}}>*</span></label><input id="faculty-name" required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="Dr. First Last" /></div>
             <div><label htmlFor="faculty-email" style={{...lbl,fontWeight:600,color:"#383346"}}>Email <span style={{color:"#A32D2D"}}>*</span></label><input id="faculty-email" type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="name@niet.co.in" /></div>
           </div>
-          <div style={{ marginBottom:13 }}><label htmlFor="faculty-password" style={{...lbl,fontWeight:600,color:"#383346"}}>Temporary password <span style={{color:"#A32D2D"}}>*</span></label><input id="faculty-password" type="password" required minLength={6} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} style={{...inp,background:"#fcfcfe"}} placeholder="At least 6 characters" /><div style={{fontSize:10,color:"#918d9c",marginTop:5}}>Share this securely with the faculty member.</div></div>
+          <div style={{ marginBottom:14,padding:"11px 13px",borderRadius:10,background:"#F5F3FF",color:"#51418c",fontSize:11,lineHeight:1.5 }}>No temporary password is needed. After creation, an email will guide the faculty member through OTP verification and password setup.</div>
           <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:13 }}>
             <div><label htmlFor="faculty-role" style={{...lbl,fontWeight:600,color:"#383346"}}>Role <span style={{color:"#A32D2D"}}>*</span></label><select id="faculty-role" required value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={{...inp,background:"#fcfcfe"}}>{ROLES.map(r=><option key={r} value={r}>{r==="dean_rd"?"Dean":r==="hod"?"HOD":"Faculty"}</option>)}</select></div>
             <div><label htmlFor="faculty-designation" style={{...lbl,fontWeight:600,color:"#383346"}}>Designation <span style={{color:"#A32D2D"}}>*</span></label><select id="faculty-designation" required value={form.designation} onChange={e=>setForm({...form,designation:e.target.value})} style={{...inp,background:"#fcfcfe"}}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></div>
@@ -511,7 +516,7 @@ function FacultyModal({ form,setForm,saving,handleCreate,setModal,schools,depts 
           </div>
           <div style={{ display:"flex",gap:10 }}>
             <button type="button" onClick={()=>setModal(false)} disabled={saving} style={{ flex:1,padding:"11px 14px",border:"1px solid #dedce8",borderRadius:10,fontSize:12,fontWeight:600,color:"#514d5c",background:"#fff",cursor:saving?"not-allowed":"pointer" }}>Cancel</button>
-            <button type="submit" disabled={saving} style={{ flex:1.5,padding:"11px 14px",background:saving?"#8876f7":P,color:"#fff",borderRadius:10,fontSize:12,fontWeight:650,border:"none",boxShadow:"0 5px 12px rgba(91,61,245,0.2)",cursor:saving?"wait":"pointer" }}>{saving?"Creating account…":"Create Faculty Account"}</button>
+            <button type="submit" disabled={saving} style={{ flex:1.5,padding:"11px 14px",background:saving?"#8876f7":P,color:"#fff",borderRadius:10,fontSize:12,fontWeight:650,border:"none",boxShadow:"0 5px 12px rgba(91,61,245,0.2)",cursor:saving?"wait":"pointer" }}>{saving?"Creating & sending setup email…":"Create Account & Send Setup OTP"}</button>
           </div>
         </form>
       </div>

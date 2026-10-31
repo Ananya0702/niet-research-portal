@@ -4,6 +4,7 @@ from sqlalchemy import or_
 from app.database import get_db
 from app.dependencies import get_current_faculty
 from app.models import Patent, Faculty, Department, School, PatentFaculty
+from app.routers.admin import get_current_admin
 from pydantic import BaseModel
 from typing import Optional, Any
 from datetime import date
@@ -44,7 +45,9 @@ def _import_scope(db, current):
 
 
 def _prepare_import(db, current, rows):
-    faculty = _import_scope(db, current)
+    scoped_faculty = _import_scope(db, current)
+    faculty = db.query(Faculty).filter(Faculty.is_active == True).all()
+    scoped_ids = {person.faculty_id for person in scoped_faculty}
     by_name = {}
     for person in faculty:
         by_name.setdefault(_normal(person.name), []).append(person)
@@ -63,6 +66,7 @@ def _prepare_import(db, current, rows):
         except (TypeError, ValueError):
             year = None
         row_issues, row_warnings, matched = [], [], []
+        has_in_scope_inventor = False
         if not title or not str(title).strip(): row_issues.append("Missing title")
         if not year or year < 1900 or year > 2200: row_issues.append("Invalid or missing year")
         if not app_no or not str(app_no).strip(): row_issues.append("Missing application number")
@@ -72,12 +76,16 @@ def _prepare_import(db, current, rows):
             matches = by_name.get(_normal(name), [])
             if len(matches) == 1:
                 if matches[0].faculty_id not in {f.faculty_id for f in matched}: matched.append(matches[0])
+                if matches[0].faculty_id in scoped_ids:
+                    has_in_scope_inventor = True
             elif len(matches) > 1:
                 row_warnings.append(f"Inventor '{name}' matches multiple faculty members and was not linked")
             else:
-                row_warnings.append(f"Inventor '{name}' was not found in your assigned scope")
-        if not matched and not row_issues:
-            row_issues.append("No inventor matched a faculty member in your assigned scope")
+                row_warnings.append(f"Inventor '{name}' was not found among active NIET faculty")
+        if matched and not has_in_scope_inventor:
+            row_issues.append("At least one inventor must belong to your assigned department or school")
+        elif not matched and not row_issues:
+            row_issues.append("No inventor matched any active NIET faculty member")
         if row_issues:
             issues.append({"row": index, "errors": row_issues})
         if row_warnings:
@@ -103,9 +111,10 @@ class PatentCreate(BaseModel):
     status: str = "Filed"
     year: int
 
-    filing_date: date
+    filing_date: Optional[date] = None
     publication_date: Optional[date] = None
     grant_date: Optional[date] = None
+    extra_data: Optional[dict[str, Any]] = None
 
 
 @router.get("/")
@@ -120,7 +129,120 @@ def get_patents(
         Patent.faculty_id.in_(faculty_ids), PatentFaculty.faculty_id.in_(faculty_ids)
     )).distinct().all()
 
+    if current.get("role") in {"hod", "dean_rd"}:
+        # Institute-managed IPR records are shared with management roles only.
+        managed = db.query(Patent).all()
+        visible_ids = {p.patent_id for p in patents}
+        for patent in managed:
+            if (isinstance(patent.extra_data, dict)
+                    and patent.extra_data.get("_access_scope") == "management"
+                    and patent.patent_id not in visible_ids):
+                patents.append(patent)
+
+    # Faculty must never receive institute-managed records, even if a future
+    # workflow links one of those records to a faculty account.
+    if current.get("role") == "faculty":
+        patents = [p for p in patents if not (
+            isinstance(p.extra_data, dict)
+            and p.extra_data.get("_access_scope") == "management"
+        )]
+
     return patents
+
+
+def _patent_result(patent):
+    return {
+        "patent_id": patent.patent_id,
+        "faculty_id": patent.faculty_id,
+        "title": patent.title,
+        "dept_code": patent.dept_code,
+        "filing_date": patent.filing_date,
+        "grant_date": patent.grant_date,
+        "status": patent.status,
+        "application_number": patent.application_number,
+        "patent_number": patent.patent_number,
+        "ipc_class": patent.ipc_class,
+        "description": patent.description,
+        "department": patent.department,
+        "school": patent.school,
+        "ipr_type": patent.ipr_type,
+        "title_type": patent.title_type,
+        "publication_number": patent.publication_number,
+        "year": patent.year,
+        "publication_date": patent.publication_date,
+        "extra_data": patent.extra_data or {},
+    }
+
+
+def _duplicate_key(value):
+    return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKD", str(value or "")).lower())
+
+
+@router.get("/admin/all")
+def get_all_patents_for_admin(db: Session = Depends(get_db), current=Depends(get_current_admin)):
+    patents = db.query(Patent).order_by(Patent.year.desc(), Patent.patent_id.desc()).all()
+    managed = [p for p in patents if isinstance(p.extra_data, dict)
+               and p.extra_data.get("_access_scope") == "management"]
+
+    def identity_values(p):
+        return {
+            _duplicate_key(p.title),
+            _duplicate_key(p.application_number),
+            _duplicate_key(p.patent_number),
+            _duplicate_key(p.publication_number),
+        } - {""}
+
+    managed_by_id = {p.patent_id: identity_values(p) for p in managed}
+    results = []
+    for patent in patents:
+        record = _patent_result(patent)
+        source = (patent.extra_data or {}).get("_access_scope") if isinstance(patent.extra_data, dict) else None
+        record["record_source"] = "admin" if source == "management" else "faculty"
+        record["duplicate_review"] = None
+        if source != "management":
+            candidate_values = identity_values(patent)
+            matches = [managed_patent for managed_patent in managed
+                       if candidate_values & managed_by_id[managed_patent.patent_id]]
+            if matches:
+                match = matches[0]
+                record["duplicate_review"] = {
+                    "status": "possible_duplicate",
+                    "matched_patent_id": match.patent_id,
+                    "matched_title": match.title,
+                }
+        results.append(record)
+    return results
+
+
+@router.post("/admin")
+def add_admin_patent(p: PatentCreate, db: Session = Depends(get_db),
+                     current=Depends(get_current_admin)):
+    extra_data = {
+        "_access_scope": "management",
+        "_created_by_admin_id": current.get("admin_id"),
+    }
+    patent = Patent(
+        faculty_id=None,
+        title=p.title.strip(),
+        department=p.department,
+        school=p.school,
+        ipr_type=p.ipr_type,
+        title_type=p.title_type,
+        application_number=p.application_number or p.patent_number,
+        publication_number=p.publication_number,
+        patent_number=p.patent_number,
+        status=p.status,
+        year=p.year,
+        filing_date=p.filing_date,
+        publication_date=p.publication_date,
+        grant_date=p.grant_date,
+        extra_data={**(p.extra_data or {}), **extra_data},
+    )
+    db.add(patent)
+    db.commit()
+    db.refresh(patent)
+    return {"message": "Institute IPR record added. It is visible to Admins, Deans, and HODs.",
+            "patent_id": patent.patent_id}
 
 
 @router.post("/import/preview")
@@ -146,14 +268,7 @@ def import_patents(payload: PatentImportRequest, db: Session = Depends(get_db),
         primary = item["faculty"][0]
         dept = db.query(Department).filter(Department.dept_id == primary.dept_id).first() if primary.dept_id else None
         user = db.query(Faculty).filter(Faculty.faculty_id == current.get("faculty_id")).first()
-        if user.role == "hod":
-            link_scope = {"level": "department", "id": user.dept_id}
-        else:
-            school_id = user.school_id
-            if not school_id and user.dept_id:
-                assigned_dept = db.query(Department).filter(Department.dept_id == user.dept_id).first()
-                school_id = assigned_dept.school_id if assigned_dept else None
-            link_scope = {"level": "school", "id": school_id}
+        link_scope = {"level": "institute"}
         source_fields = dict(item["row"])
         source_fields["_patent_link_scope"] = link_scope
         patent = Patent(

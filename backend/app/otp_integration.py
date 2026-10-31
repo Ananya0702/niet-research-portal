@@ -1,10 +1,9 @@
 """OTP Integration Service — client for the external Email OTP API.
 
-The portal does NOT generate, store or verify OTPs. It delegates to the
-configured external service (``POST /send-otp``, ``POST /verify-otp``) and only
-enforces policy around it: rate limits, attempt caps, expiry and single-use are
-handled by the external API. OTP values are never logged or returned by the
-portal.
+The portal delegates OTP generation, storage and verification to the configured
+external service (``POST /send-otp``, ``POST /verify-otp``). A code is returned
+to the browser only when the operator explicitly enables the emergency in-app
+fallback and email delivery fails.
 
 Configuration:
     OTP_API_BASE_URL   base URL of the external Email OTP API
@@ -14,11 +13,12 @@ Configuration:
 import json
 import logging
 import os
-import random
+import secrets
 import smtplib
 import threading
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 from collections import deque
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -26,6 +26,14 @@ from email.message import EmailMessage
 log = logging.getLogger("otp_integration")
 
 REQUEST_TIMEOUT_SECONDS = 10
+ACCOUNT_ACTIVATION_PURPOSE = "account_activation"
+
+
+def _activation_link(email: str) -> str:
+    portal_url = (os.getenv("PORTAL_URL") or "").strip().rstrip("/")
+    if not portal_url:
+        return ""
+    return f"{portal_url}/forgot-password?{urlencode({'activation': '1', 'email': email})}"
 
 # In-memory OTP storage for internal/fallback mode
 _internal_otp_store = {}
@@ -33,12 +41,12 @@ _internal_otp_lock = threading.Lock()
 
 
 def _get_email_credentials():
-    email = (os.getenv("EMAIL_ADDRESS") or os.getenv("SMTP_USER") or "ananyashukla.1427@gmail.com").strip()
-    pwd = (os.getenv("EMAIL_APP_PASSWORD") or os.getenv("SMTP_PASSWORD") or "xyiyimdruluutckv").strip()
+    email = (os.getenv("EMAIL_ADDRESS") or os.getenv("SMTP_USER") or "").strip()
+    pwd = (os.getenv("EMAIL_APP_PASSWORD") or os.getenv("SMTP_PASSWORD") or "").strip()
     return email, pwd
 
 
-def _send_via_resend(email: str, otp: str) -> bool:
+def _send_via_resend(email: str, otp: str, purpose: str = "account verification") -> bool:
     resend_key = (os.getenv("RESEND_API_KEY") or "").strip()
     if not resend_key:
         return False
@@ -52,14 +60,16 @@ def _send_via_resend(email: str, otp: str) -> bool:
         body = json.dumps({
             "from": "NIET Research Portal <onboarding@resend.dev>",
             "to": [email],
-            "subject": "Your OTP Verification Code — NIET Research Portal",
+            "subject": ("Set up your NIET Research Portal account" if purpose == ACCOUNT_ACTIVATION_PURPOSE
+                        else "Your OTP Verification Code — NIET Research Portal"),
             "html": f"""
             <div style="font-family: Arial, sans-serif; padding: 24px; color: #222;">
                 <h2 style="color: #5B3DF5; margin-bottom: 8px;">NIET Research & Innovation Portal</h2>
                 <p>Hello,</p>
-                <p>Your 6-digit OTP for account verification is:</p>
+                <p>Your 6-digit OTP to {purpose.replace('_', ' ')} is:</p>
                 <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #5B3DF5; padding: 14px 0;">{otp}</div>
-                <p>This code is valid for 5 minutes.</p>
+                <p>This code is valid for 5 minutes. Enter it on the NIET Research Portal to set your password.</p>
+                {f'<p><a href="{_activation_link(email)}">Open account setup</a></p>' if purpose == ACCOUNT_ACTIVATION_PURPOSE else ''}
                 <p style="color: #888; font-size: 12px; margin-top: 24px;">If you did not request this OTP, please ignore this email.</p>
             </div>
             """,
@@ -74,9 +84,9 @@ def _send_via_resend(email: str, otp: str) -> bool:
     return False
 
 
-def _internal_send_otp(email: str) -> dict:
+def _internal_send_otp(email: str, purpose: str = "account verification") -> dict:
     email = (email or "").strip().lower()
-    otp = str(random.randint(100000, 999999))
+    otp = str(secrets.randbelow(900000) + 100000)
     expires_at = datetime.now() + timedelta(minutes=5)
 
     with _internal_otp_lock:
@@ -86,7 +96,7 @@ def _internal_send_otp(email: str) -> dict:
         }
 
     # 1. Try Resend HTTPS API first (works on Render without any blocked ports)
-    if _send_via_resend(email, otp):
+    if _send_via_resend(email, otp, purpose):
         return {
             "ok": True,
             "message": "OTP has been sent to your registered email.",
@@ -96,16 +106,18 @@ def _internal_send_otp(email: str) -> dict:
     # 2. Try Gmail SMTP (ports 587 STARTTLS / 465 SSL)
     sender_email, sender_pwd = _get_email_credentials()
     msg = EmailMessage()
-    msg["Subject"] = "Your OTP Verification Code — NIET Research Portal"
+    msg["Subject"] = ("Set up your NIET Research Portal account" if purpose == ACCOUNT_ACTIVATION_PURPOSE
+                       else "Your OTP Verification Code — NIET Research Portal")
     msg["From"] = f"NIET Research Portal <{sender_email}>"
     msg["To"] = email
     msg.set_content(f"""Hello,
 
-Your 6-digit OTP for account verification is:
+    Your 6-digit OTP to {purpose.replace('_', ' ')} is:
 
 {otp}
 
-This OTP is valid for 5 minutes.
+This OTP is valid for 5 minutes. Enter it on the NIET Research Portal to set your password.
+{f'Account setup link: {_activation_link(email)}' if purpose == ACCOUNT_ACTIVATION_PURPOSE else ''}
 If you did not request this OTP, please ignore this email.
 
 Regards,
@@ -140,15 +152,19 @@ NIET Research & Innovation Portal
             "retryable": False,
         }
 
-    # 3. If cloud host blocks SMTP (Render blocks ports 25, 465, 587), surface the code so user is unblocked
-    if "101" in smtp_err or "unreachable" in smtp_err.lower() or "connection refused" in smtp_err.lower():
-        log.info("[CLOUD SMTP BLOCKED] Render blocks ports 587/465. Verification code for %s is: %s", email, otp)
+    # In-app delivery is an explicit emergency fallback. Never log or expose
+    # the code unless the operator has enabled it on the server.
+    if (os.getenv("OTP_ALLOW_IN_APP_FALLBACK") or "").lower() in {"1", "true", "yes"}:
         return {
             "ok": True,
-            "message": f"Render cloud blocked SMTP ports. Your active verification code is: {otp} (Enter this code below to proceed).",
+            "message": "Email delivery is unavailable. Use the temporary code shown on this screen.",
+            "delivery": "in_app_fallback",
+            "fallback_code": otp,
             "retryable": False,
         }
 
+    with _internal_otp_lock:
+        _internal_otp_store.pop(email, None)
     return {
         "ok": False,
         "message": f"SMTP delivery failed: {smtp_err}. Please check email credentials.",
@@ -206,16 +222,44 @@ def _post(path: str, payload: dict) -> tuple:
         return 0, {}
 
 
-def send_otp(email: str) -> dict:
+def send_otp(email: str, purpose: str = "account verification") -> dict:
     """Request an OTP email from the external API or built-in service."""
+    email = (email or "").strip().lower()
+    if purpose == ACCOUNT_ACTIVATION_PURPOSE and not _activation_link(email):
+        return {"ok": False, "message": "PORTAL_URL must be configured before sending account setup emails.", "retryable": False}
     base_url = api_base_url()
     # If a real external service URL is configured (not default localhost), try it first:
     if base_url and not base_url.startswith("http://127.0.0.1") and not base_url.startswith("http://localhost"):
-        status, body = _post("/send-otp", {"email": email})
+        status, body = _post("/send-otp", {"email": email, "purpose": purpose})
         if 200 <= status < 300:
-            return {"ok": True,
-                    "message": "OTP has been sent to your registered email.",
-                    "retryable": False}
+            fallback_enabled = (os.getenv("OTP_ALLOW_IN_APP_FALLBACK") or "").lower() in {"1", "true", "yes"}
+            if body.get("delivery") == "in_app_fallback":
+                code = str(body.get("fallback_code") or "")
+                if fallback_enabled and len(code) == 6 and code.isdigit():
+                    return {
+                        "ok": True,
+                        "message": body.get("message") or "Use the temporary code shown on this screen.",
+                        "delivery": "in_app_fallback",
+                        "fallback_code": code,
+                        "retryable": False,
+                    }
+                return {
+                    "ok": False,
+                    "message": "In-app OTP fallback is disabled on the portal backend. Configure it on both OTP services or fix email delivery.",
+                    "retryable": True,
+                }
+            if body.get("delivery") != "email":
+                return {
+                    "ok": False,
+                    "message": "The OTP service did not confirm email delivery. Check its mail configuration and logs.",
+                    "retryable": True,
+                }
+            result = {
+                "ok": True,
+                "message": body.get("message") or "OTP has been sent to your registered email.",
+                "retryable": False,
+            }
+            return result
         if status != 0:
             return {"ok": False,
                     "message": body.get("detail", "Failed to send OTP. Please try again later."),
@@ -223,7 +267,7 @@ def send_otp(email: str) -> dict:
         log.warning("External OTP service unreachable at %s, falling back to built-in email service", base_url)
 
     # In-process / built-in email dispatch
-    return _internal_send_otp(email)
+    return _internal_send_otp(email, purpose)
 
 
 def verify_otp(email: str, otp: str) -> dict:

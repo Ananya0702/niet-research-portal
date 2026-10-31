@@ -150,6 +150,8 @@ Tables are created automatically on first backend boot
    SECRET_KEY=<python -c "import secrets; print(secrets.token_urlsafe(48)")>
    CORS_ORIGINS=https://<your-vercel-project>.vercel.app
    OTP_API_BASE_URL=https://<otp-service-domain>     # set after step 4
+   PORTAL_URL=https://<your-vercel-project>.vercel.app
+   OTP_ALLOW_IN_APP_FALLBACK=false
    ```
 
 4. **Settings → Networking → Generate Domain** → note e.g.
@@ -181,10 +183,23 @@ Tables are created automatically on first backend boot
    ```
    EMAIL_ADDRESS=your_email@gmail.com
    EMAIL_APP_PASSWORD=<16-char gmail app password>
+   PORTAL_URL=https://<your-frontend-domain>
+   OTP_ALLOW_IN_APP_FALLBACK=false
    ```
 
 4. Generate domain → then go back to the **backend service** and set
    `OTP_API_BASE_URL=https://<this-domain>` (Railway redeploys automatically).
+   Set `PORTAL_URL` on both the backend and OTP API to the public frontend URL.
+   New faculty receive an account-setup email with a five-minute OTP and a link
+   to verify the code and choose their password.
+
+   The portal reports an OTP as sent only after SMTP confirms delivery. For a
+   temporary closed pilot only, set `OTP_ALLOW_IN_APP_FALLBACK=true` on both the
+   backend and OTP API services to show the code in that requester’s OTP screen
+   when email delivery fails. This weakens password-reset verification because
+   the code is visible to whoever submits the reset request; leave it disabled
+   on a public production site. Prefer configuring valid Gmail app-password
+   credentials or another approved email sender.
 
 ### Step 5 — Frontend on Vercel
 

@@ -16,16 +16,21 @@ class SmtpEmailProvider(EmailProvider):
     name = "smtp"
 
     def is_configured(self) -> bool:
-        return True
+        return bool(_env("SMTP_USER", "EMAIL_ADDRESS") and
+                    _env("SMTP_PASSWORD", "EMAIL_APP_PASSWORD") and
+                    _env("SMTP_FROM", "SMTP_USER", "EMAIL_ADDRESS"))
 
     def send(self, to_email: str, subject: str, html_body: str,
              text_body: str = "") -> bool:
         host = _env("SMTP_HOST", default="smtp.gmail.com")
         try:
             port = int(_env("SMTP_PORT", default="587"))
-            user = _env("SMTP_USER", "EMAIL_ADDRESS", default="ananyashukla.1427@gmail.com")
-            password = _env("SMTP_PASSWORD", "EMAIL_APP_PASSWORD", default="xyiyimdruluutckv")
-            from_addr = _env("SMTP_FROM", "SMTP_USER", "EMAIL_ADDRESS", default="ananyashukla.1427@gmail.com")
+            user = _env("SMTP_USER", "EMAIL_ADDRESS")
+            password = _env("SMTP_PASSWORD", "EMAIL_APP_PASSWORD")
+            from_addr = _env("SMTP_FROM", "SMTP_USER", "EMAIL_ADDRESS")
+            if not user or not password or not from_addr:
+                log.error("Email provider is not configured: set SMTP_USER, SMTP_PASSWORD, and SMTP_FROM")
+                return False
             from_name = _env("SMTP_FROM_NAME", default=APP_NAME)
 
             msg = MIMEMultipart("alternative")

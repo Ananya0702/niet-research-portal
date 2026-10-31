@@ -11,13 +11,14 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_HOST     = os.getenv("DB_HOST", "localhost")
 DB_PORT     = os.getenv("DB_PORT", "3306")
 DB_NAME     = os.getenv("DB_NAME", "niet_research")
+DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "8"))
 
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Managed MySQL providers (Aiven, Railway public proxy, PlanetScale, ...)
 # usually require TLS. Set DB_SSL=true to encrypt the connection; set
 # DB_SSL_CA=/path/to/ca.pem when the provider's CA certificate is available.
-connect_args = {}
+connect_args = {"connect_timeout": DB_CONNECT_TIMEOUT}
 if os.getenv("DB_SSL", "").strip().lower() in ("1", "true", "yes"):
     ca = os.getenv("DB_SSL_CA", "").strip()
     if ca:

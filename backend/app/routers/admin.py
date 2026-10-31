@@ -12,6 +12,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime as dt
 from collections import defaultdict
+import secrets
+from app.otp_integration import begin_forgot_password_flow, end_forgot_password_flow, send_otp as api_send_otp
 
 router = APIRouter()
 
@@ -33,7 +35,6 @@ class AdminLogin(BaseModel):
 class FacultyCreate(BaseModel):
     name:              str
     email:             str
-    password:          str
     role:              str = "faculty"
     designation:       str = "Assistant Professor"
     dept_id:           Optional[int] = None
@@ -291,14 +292,15 @@ def faculty_sync_status(faculty_id: int, db: Session = Depends(get_db),
 @router.post("/faculty")
 def create_faculty(data: FacultyCreate, db: Session = Depends(get_db),
                    current=Depends(get_current_admin)):
-    existing = db.query(Faculty).filter(Faculty.email == data.email).first()
+    email = data.email.strip().lower()
+    existing = db.query(Faculty).filter(func.lower(Faculty.email) == email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     faculty = Faculty(
         name              = data.name,
-        email             = data.email,
-        password_hash     = get_password_hash(data.password),
+        email             = email,
+        password_hash     = get_password_hash(secrets.token_urlsafe(32)),
         role              = data.role,
         designation       = data.designation,
         dept_id           = data.dept_id,
@@ -308,6 +310,7 @@ def create_faculty(data: FacultyCreate, db: Session = Depends(get_db),
         orcid_id          = data.orcid_id,
         scopus_author_id  = data.scopus_author_id,
         is_active         = True,
+        force_password_reset = True,
         h_index           = 0,
         i10_index         = 0,
         total_publications= 0,
@@ -316,12 +319,37 @@ def create_faculty(data: FacultyCreate, db: Session = Depends(get_db),
     db.add(faculty)
     db.flush()
     linked_patents = link_saved_patents_to_new_faculty(db, faculty)
-    db.commit()
+    flow = begin_forgot_password_flow(faculty.faculty_id, email)
+    if not flow.get("ok"):
+        db.rollback()
+        raise HTTPException(status_code=429, detail=flow.get("message") or "Could not start account setup.")
+
+    sent = api_send_otp(email, purpose="account_activation")
+    if not sent.get("ok") or sent.get("delivery") == "in_app_fallback":
+        end_forgot_password_flow(faculty.faculty_id)
+        db.rollback()
+        delivery_error = (
+            "In-app OTP fallback cannot be used for account invitations; the setup email must be delivered."
+            if sent.get("delivery") == "in_app_fallback"
+            else sent.get("message") or "Check OTP email settings and try again."
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Faculty account was not created because the setup email could not be delivered. {delivery_error}",
+        )
+
+    try:
+        db.commit()
+    except Exception:
+        end_forgot_password_flow(faculty.faculty_id)
+        db.rollback()
+        raise
     db.refresh(faculty)
     return {
-        "message":    "Faculty created successfully",
+        "message":    "Faculty account created. An OTP setup email has been sent to the faculty member.",
         "faculty_id": faculty.faculty_id,
         "email":      faculty.email,
+        "setup_email_sent": True,
         "linked_patents": linked_patents,
     }
 

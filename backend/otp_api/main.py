@@ -3,10 +3,11 @@ from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 
 import os
-import random
+import secrets
 import smtplib
 from email.message import EmailMessage
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 
 # Load .env file
@@ -18,6 +19,8 @@ app = FastAPI(title="Email OTP API")
 # Gmail credentials from .env
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
+ALLOW_IN_APP_FALLBACK = (os.getenv("OTP_ALLOW_IN_APP_FALLBACK") or "").lower() in {"1", "true", "yes"}
+PORTAL_URL = (os.getenv("PORTAL_URL") or "").strip().rstrip("/")
 
 
 # Temporary OTP storage
@@ -27,6 +30,7 @@ otp_storage = {}
 # Request model for sending OTP
 class OTPRequest(BaseModel):
     email: EmailStr
+    purpose: str = "account verification"
 
 
 # Request model for verifying OTP
@@ -45,10 +49,13 @@ def home():
 @app.post("/send-otp")
 def send_otp(request: OTPRequest):
 
-    email = request.email
+    email = str(request.email).strip().lower()
+    is_activation = request.purpose == "account_activation"
+    if is_activation and not PORTAL_URL:
+        raise HTTPException(status_code=503, detail="PORTAL_URL is not configured on the OTP service.")
 
     # Generate a 6-digit OTP
-    otp = str(random.randint(100000, 999999))
+    otp = str(secrets.randbelow(900000) + 100000)
 
     # OTP expires after 5 minutes
     expiry_time = datetime.now() + timedelta(minutes=5)
@@ -56,25 +63,31 @@ def send_otp(request: OTPRequest):
     # Store OTP
     otp_storage[email] = {
         "otp": otp,
-        "expires_at": expiry_time
+        "expires_at": expiry_time,
+        "attempts": 0,
     }
 
     # Create email
     message = EmailMessage()
 
-    message["Subject"] = "Your OTP Verification Code"
-    message["From"] = EMAIL_ADDRESS
+    message["Subject"] = ("Set up your NIET Research Portal account" if is_activation
+                          else "Your OTP Verification Code")
+    message["From"] = EMAIL_ADDRESS or "NIET Research Portal <no-reply@niet.co.in>"
     message["To"] = email
 
+    setup_link = (f"{PORTAL_URL}/forgot-password?{urlencode({'activation': '1', 'email': email})}"
+                  if is_activation else "")
+    purpose_text = "activate your account and set your password" if is_activation else request.purpose
     message.set_content(
         f"""
 Hello,
 
-Your OTP for verification is:
+Your OTP to {purpose_text} is:
 
 {otp}
 
-This OTP is valid for 5 minutes.
+This OTP is valid for 5 minutes. Enter it on the NIET Research Portal.
+{f'Open account setup: {setup_link}' if is_activation else ''}
 
 If you did not request this OTP, please ignore this email.
 
@@ -84,44 +97,25 @@ OTP Verification System
     )
 
     try:
-        # Local/dev bypass: if credentials missing or placeholders, skip actual email sending
-        if not EMAIL_ADDRESS or not EMAIL_APP_PASSWORD or \
-           EMAIL_ADDRESS == "your_email@gmail.com" or \
-           EMAIL_APP_PASSWORD == "your_gmail_app_password":
-            print(f"[DEV OTP] {email} -> {otp} (expires {expiry_time})")
+        if not EMAIL_ADDRESS or not EMAIL_APP_PASSWORD or EMAIL_ADDRESS == "your_email@gmail.com":
+            raise RuntimeError("OTP email credentials are not configured")
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
+            server.send_message(message)
+        return {"success": True, "delivery": "email", "message": "OTP sent to your registered email."}
+    except Exception as e:
+        if ALLOW_IN_APP_FALLBACK:
             return {
                 "success": True,
-                "message": "OTP sent successfully (dev mode)"
+                "delivery": "in_app_fallback",
+                "message": "Email delivery is unavailable. Use the temporary code shown on this screen.",
+                "fallback_code": otp,
             }
-
-        # Connect to Gmail SMTP
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-
-            server.starttls()
-
-            # Login using Gmail App Password
-            server.login(
-                EMAIL_ADDRESS,
-                EMAIL_APP_PASSWORD
-            )
-
-            # Send email
-            server.send_message(message)
-
-        return {
-            "success": True,
-            "message": "OTP sent successfully"
-        }
-
-    except Exception as e:
-
-        # Remove OTP if sending failed
         otp_storage.pop(email, None)
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send OTP: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail="OTP email delivery failed. Please contact the administrator.") from e
 
 
 @app.post("/verify-otp")
@@ -139,6 +133,10 @@ def verify_otp(request: VerifyOTPRequest):
 
     saved_data = otp_storage[email]
 
+    if saved_data.get("attempts", 0) >= 5:
+        del otp_storage[email]
+        raise HTTPException(status_code=400, detail="Too many invalid attempts. Please request a new OTP.")
+
     saved_otp = saved_data["otp"]
     expiry_time = saved_data["expires_at"]
 
@@ -154,6 +152,7 @@ def verify_otp(request: VerifyOTPRequest):
 
     # Check OTP
     if entered_otp != saved_otp:
+        saved_data["attempts"] = saved_data.get("attempts", 0) + 1
 
         raise HTTPException(
             status_code=400,

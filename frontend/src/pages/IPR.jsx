@@ -391,7 +391,7 @@ export default function IPR() {
               <button onClick={() => setImportOpen(false)} style={{ border: 0, background: "none", fontSize: 24, cursor: "pointer", color: "#777" }}>×</button>
             </div>
             <p style={{ color: "#6e6a7a", fontSize: 13, lineHeight: 1.55, marginTop: 0 }}>
-              Choose an Excel or CSV file. The importer reads the first worksheet, matches each inventor to faculty in your assigned scope, and stores all spreadsheet columns—including future columns—with the patent.
+              Choose an Excel or CSV file. At least one inventor must be in your department or school; other uniquely matched NIET collaborators can be from anywhere in the institute. All spreadsheet columns, including future columns, are saved with the patent.
             </p>
             <input type="file" accept=".xlsx,.xls,.csv" onChange={e => readImportFile(e.target.files?.[0])} style={{ display: "block", width: "100%", padding: 14, border: "1px dashed #bcb7da", borderRadius: 10, background: "#faf9ff", boxSizing: "border-box" }} />
             {importSummary && <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: importIssues.length ? "#fff6e8" : "#f1f0ff", color: "#39324f", fontSize: 13 }}>{importSummary}</div>}

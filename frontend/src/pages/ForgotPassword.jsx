@@ -10,13 +10,20 @@ import {
 
 const STEPS = ["Verify identity", "Enter OTP", "Set new password", "Done"];
 const P = "#534AB7";
+const inviteParams = new URLSearchParams(window.location.search);
+const activationEmail = inviteParams.get("activation") === "1" ? (inviteParams.get("email") || "").trim().toLowerCase() : "";
+const maskEmail = (email) => {
+  const [local, domain] = email.split("@");
+  if (!domain) return email;
+  return `${local.slice(0, 2)}${"*".repeat(Math.max(1, local.length - 2))}@${domain}`;
+};
 
 export default function ForgotPassword() {
-  const [step, setStep]             = useState(0);
-  const [identifier, setIdentifier] = useState("");
+  const [step, setStep]             = useState(activationEmail ? 1 : 0);
+  const [identifier, setIdentifier] = useState(activationEmail);
   const [otp, setOtp]               = useState("");
-  const [masked, setMasked]         = useState("");
-  const [otpRequested, setOtpRequested] = useState(false);
+  const [masked, setMasked]         = useState(activationEmail ? maskEmail(activationEmail) : "");
+  const [otpRequested, setOtpRequested] = useState(!!activationEmail);
   const [resendIn, setResendIn]     = useState(300);
   const retryRef                    = useRef(60);
   const [newPass, setNewPass]       = useState("");
@@ -24,7 +31,8 @@ export default function ForgotPassword() {
   const [rules, setRules]           = useState([]);
   const [strength, setStrength]     = useState("");
   const [error, setError]           = useState("");
-  const [success, setSuccess]       = useState("");
+  const [success, setSuccess]       = useState(activationEmail ? "Your account setup code was sent to your registered email." : "");
+  const [fallbackCode, setFallbackCode] = useState("");
   const [loading, setLoading]       = useState(false);
 
   useEffect(() => {
@@ -52,6 +60,8 @@ export default function ForgotPassword() {
     e.preventDefault();
     go(() => forgotPasswordRequest(identifier), (res) => {
       setMasked(res.data.masked_contact);
+      setSuccess(res.data.message || "OTP request completed.");
+      setFallbackCode(res.data.delivery === "in_app_fallback" ? (res.data.fallback_code || "") : "");
       retryRef.current = res.data.retry_after_seconds || 60;
       resetOtpTimer(retryRef.current);
       setStep(1);
@@ -67,10 +77,13 @@ export default function ForgotPassword() {
   };
 
   const handleResend = () => {
-    resetOtpTimer();
+    setFallbackCode("");
     go(() => forgotPasswordRequest(identifier), (res) => {
       setMasked(res.data.masked_contact);
+      setSuccess(res.data.message || "A new OTP has been requested.");
+      setFallbackCode(res.data.delivery === "in_app_fallback" ? (res.data.fallback_code || "") : "");
       retryRef.current = res.data.retry_after_seconds || 60;
+      resetOtpTimer(retryRef.current);
     });
   };
 
@@ -193,8 +206,19 @@ export default function ForgotPassword() {
                   Enter verification code
                 </div>
                 <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
-                  We sent a 6-digit code by email to <b style={{ color: "#b9aaff" }}>{masked}</b>.
+                  {activationEmail ? <>Your faculty account is ready. Enter the setup code sent to <b style={{ color: "#b9aaff" }}>{masked}</b> to verify your email and choose a password.</> : fallbackCode ? <>Email delivery was unavailable. Use the temporary code shown below for <b style={{ color: "#b9aaff" }}>{masked}</b>.</> : <>We sent a 6-digit code by email to <b style={{ color: "#b9aaff" }}>{masked}</b>.</>}
                 </div>
+                {fallbackCode && (
+                  <div role="status" aria-live="polite" style={{
+                    margin: "12px 0 18px", padding: "14px 16px", borderRadius: 12,
+                    border: "1px solid rgba(255,190,90,.55)", background: "rgba(120,75,15,.28)",
+                    textAlign: "center", color: "#fff",
+                  }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)", marginBottom: 6 }}>TEMPORARY VERIFICATION CODE</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 8 }}>{fallbackCode}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.75)", marginTop: 7 }}>Expires in 5 minutes. Do not share this code.</div>
+                  </div>
+                )}
                 <div style={{ fontSize: 22, fontWeight: 700, color: "#b9aaff", textAlign: "center", marginBottom: 18 }}>
                   {fmtTimer(resendIn)}
                 </div>

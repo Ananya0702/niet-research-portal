@@ -53,6 +53,7 @@ export default function Settings() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState("");
+  const [pwFallbackCode, setPwFallbackCode] = useState("");
   const otpKey = useRef(0);
   const resendRef = useRef(60);
 
@@ -97,7 +98,7 @@ export default function Settings() {
   // ── Change password flow ────────────────────────────────────────────────
   const openPwModal = () => {
     setPwAction(null);
-    setPwModal(true); setPwStep(0); setPwError(""); setPwSuccess("");
+    setPwModal(true); setPwStep(0); setPwError(""); setPwSuccess(""); setPwFallbackCode("");
     setPwNew(""); setPwConfirm(""); setPwRules([]); setPwStrength("");
     setOtpRequested(false); setResendIn(300);
   };
@@ -115,6 +116,7 @@ export default function Settings() {
     if (!res) return;
     setPwMasked(res.data.masked_contact);
     if (res.data.message) setPwSuccess(res.data.message);
+    setPwFallbackCode(res.data.delivery === "in_app_fallback" ? (res.data.fallback_code || "") : "");
     resendRef.current = res.data.retry_after_seconds || 60;
     resetOtpTimer(res.data.retry_after_seconds || 60);
     setPwStep(1);
@@ -134,8 +136,14 @@ export default function Settings() {
       runPw(() => changePasswordRequest("verify_contact"));
       return;
     }
-    resetOtpTimer(resendRef.current);
-    runPw(() => emailChangePasswordRequest(account?.email || ""));
+    setPwFallbackCode("");
+    runPw(() => emailChangePasswordRequest(account?.email || "")).then(res => {
+      if (!res) return;
+      setPwSuccess(res.data.message || "A new OTP has been requested.");
+      setPwFallbackCode(res.data.delivery === "in_app_fallback" ? (res.data.fallback_code || "") : "");
+      resendRef.current = res.data.retry_after_seconds || 60;
+      resetOtpTimer(resendRef.current);
+    });
   };
 
   const handlePwStrength = async (val) => {
@@ -678,8 +686,15 @@ export default function Settings() {
             {pwStep === 1 && (
               <div>
                 <div style={{ fontSize:13, color:"#444", marginBottom:8 }}>
-                  We sent a 6-digit code to your registered email <b style={{ color:P }}>{pwMasked}</b>.
+                  {pwFallbackCode ? <>Email delivery was unavailable. Use the temporary code shown below for <b style={{ color:P }}>{pwMasked}</b>.</> : <>We sent a 6-digit code to your registered email <b style={{ color:P }}>{pwMasked}</b>.</>}
                 </div>
+                {pwFallbackCode && (
+                  <div role="status" aria-live="polite" style={{ margin:"12px 0 16px",padding:"13px 15px",borderRadius:10,border:"1px solid #E6A23C",background:"#FFF8E8",textAlign:"center" }}>
+                    <div style={{ fontSize:10,color:"#795500",fontWeight:600,marginBottom:5 }}>TEMPORARY VERIFICATION CODE</div>
+                    <div style={{ fontSize:26,fontWeight:800,letterSpacing:7,color:"#1a1a1a" }}>{pwFallbackCode}</div>
+                    <div style={{ fontSize:10,color:"#795500",marginTop:5 }}>Expires in 5 minutes. Do not share this code.</div>
+                  </div>
+                )}
                 <div style={{ fontSize:22, fontWeight:700, color:P, textAlign:"center", marginBottom:14 }}>
                   {fmtTimer(resendIn)}
                 </div>
